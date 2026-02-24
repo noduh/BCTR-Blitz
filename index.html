@@ -429,7 +429,7 @@
         let lastPinchDistance = null; 
         let updateRAF = null; // RequestAnimationFrame throttle
         let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
-        const SEAT_LABEL_ZOOM_THRESHOLD = 450; // Show seat numbers when viewBox width is below this
+        const SEAT_LABEL_ZOOM_THRESHOLD = 300; // Show seat numbers when viewBox width is below this
         
         // --- MATH HELPERS ---
         function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
@@ -972,10 +972,8 @@
         function updateSeatLabels() {
             const layer = document.getElementById('seat-labels-layer');
             if (!layer) return;
-            const mapWrapper = document.getElementById('map-wrapper');
-            const isLearning = mapWrapper && mapWrapper.classList.contains('mode-learning');
             const zoomedIn = currentViewBox.w < SEAT_LABEL_ZOOM_THRESHOLD;
-            if (!zoomedIn || (gameState === 'playing' && !isLearning)) {
+            if (!zoomedIn) {
                 layer.innerHTML = '';
                 return;
             }
@@ -994,7 +992,7 @@
             updateRAF = requestAnimationFrame(() => {
                 const svg = document.getElementById('auditorium-map');
                 if(svg) svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
-                updateSeatLabels();
+                if (!isPanning) updateSeatLabels();
             });
         }
 
@@ -1105,8 +1103,8 @@
             svg.style.cursor = 'grab';
             svg.classList.remove('is-panning'); // Re-enable hovers
             
-            // Delay resetting panning slightly to prevent accidental clicks
-            setTimeout(() => { isPanning = false; }, 50);
+            // Delay resetting panning slightly to prevent accidental clicks, then refresh labels
+            setTimeout(() => { isPanning = false; updateSeatLabels(); }, 50);
         }
 
         function applyColors() {
