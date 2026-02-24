@@ -190,6 +190,7 @@
                         <!-- DYNAMIC LAYERS -->
                         <g id="floor-labels-layer"></g>
                         <g id="sections-layer"></g>
+                        <g id="seat-labels-layer"></g>
                     </g>
                 </svg>
 
@@ -427,6 +428,8 @@
         let dragScale = { x: 1, y: 1 }; // Cached scaling to prevent layout thrashing
         let lastPinchDistance = null; 
         let updateRAF = null; // RequestAnimationFrame throttle
+        let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
+        const SEAT_LABEL_ZOOM_THRESHOLD = 450; // Show seat numbers when viewBox width is below this
         
         // --- MATH HELPERS ---
         function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
@@ -676,6 +679,7 @@
             mapWrapper.classList.add('opacity-50', 'scale-95');
             
             resetMapVisuals();
+            updateSeatLabels();
         }
 
         function endGame() {
@@ -790,6 +794,7 @@
                     if (solvedCount === 19) {
                         // Instant transition to Hard Mode via CSS
                         document.getElementById('map-wrapper').classList.remove('mode-learning');
+                        updateSeatLabels();
                     }
                     resetMapVisuals(); 
                 }, 500);
@@ -849,6 +854,7 @@
             
             let sectionsHTML = '';
             let labelsHTML = '';
+            seatLabelData = [];
 
             VENUE_CONFIG.forEach(config => {
                 let tierSections = config.sections || config.names.map(name => ({
@@ -898,6 +904,9 @@
                             
                             // Seat Circle
                             sectionsHTML += `<circle cx="${pos.x}" cy="${pos.y}" id="${fullSeatId}" fill="${COLORS.seatDefault}" class="seat-circle cursor-pointer hover:fill-white"></circle>`;
+                            
+                            // Store lightweight data for dynamic label rendering
+                            seatLabelData.push({ x: pos.x, y: pos.y, n: seatNum });
                         }
                     }
                 });
@@ -960,11 +969,32 @@
         }
 
         // --- ZOOM & PAN SYSTEM WITH PERFORMANCE RAF THROTTLING ---
+        function updateSeatLabels() {
+            const layer = document.getElementById('seat-labels-layer');
+            if (!layer) return;
+            const mapWrapper = document.getElementById('map-wrapper');
+            const isLearning = mapWrapper && mapWrapper.classList.contains('mode-learning');
+            const zoomedIn = currentViewBox.w < SEAT_LABEL_ZOOM_THRESHOLD;
+            if (!isLearning && !zoomedIn) {
+                layer.innerHTML = '';
+                return;
+            }
+            const { x, y, w, h } = currentViewBox;
+            const parts = [];
+            for (const s of seatLabelData) {
+                if (s.x >= x && s.x <= x + w && s.y >= y && s.y <= y + h) {
+                    parts.push(`<text x="${s.x}" y="${s.y}" fill="#000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1">${s.n | 0}</text>`);
+                }
+            }
+            layer.innerHTML = parts.join('');
+        }
+
         function updateViewBox() {
             if (updateRAF) cancelAnimationFrame(updateRAF);
             updateRAF = requestAnimationFrame(() => {
                 const svg = document.getElementById('auditorium-map');
                 if(svg) svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
+                updateSeatLabels();
             });
         }
 
