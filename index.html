@@ -429,7 +429,7 @@
         let lastPinchDistance = null; 
         let updateRAF = null; // RequestAnimationFrame throttle
         let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
-        const SEAT_LABEL_ZOOM_THRESHOLD = 450; // Show seat numbers when viewBox width is below this
+        const SEAT_LABEL_ZOOM_THRESHOLD = 300; // Show seat numbers when viewBox width is below this
         
         // --- MATH HELPERS ---
         function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
@@ -979,10 +979,30 @@
                 layer.innerHTML = '';
                 return;
             }
-            const { x, y, w, h } = currentViewBox;
+            // The SVG uses preserveAspectRatio="xMidYMid meet": the viewBox fits
+            // inside the SVG element centered, with possible letterboxing on screen.
+            // The SVG clips to its CSS element box (not the viewBox), so the
+            // letterbox areas outside the viewBox mapping are also visible on screen
+            // and must receive labels. Compute the actual visible SVG coordinate range.
+            const svg = document.getElementById('auditorium-map');
+            const rect = svg.getBoundingClientRect();
+            const { x: vbX, y: vbY, w: vbW, h: vbH } = currentViewBox;
+            const meetScale = Math.min(rect.width / vbW, rect.height / vbH);
+            const visW = rect.width / meetScale;
+            const visH = rect.height / meetScale;
+            const rootXMin = vbX - (visW - vbW) / 2;
+            const rootXMax = rootXMin + visW;
+            const rootYMin = vbY - (visH - vbH) / 2;
+            const rootYMax = rootYMin + visH;
+            // seatLabelData uses group-local coords; <g transform="translate(0,50)">
+            // means root SVG y = group y + 50, so subtract 50 from root Y bounds.
+            const xMin = rootXMin;
+            const xMax = rootXMax;
+            const yMin = rootYMin - 50;
+            const yMax = rootYMax - 50;
             const parts = [];
             for (const s of seatLabelData) {
-                if (s.x >= x && s.x <= x + w && s.y >= y && s.y <= y + h) {
+                if (s.x >= xMin && s.x <= xMax && s.y >= yMin && s.y <= yMax) {
                     parts.push(`<text x="${s.x}" y="${s.y}" fill="#000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1">${s.n | 0}</text>`);
                 }
             }
@@ -994,7 +1014,7 @@
             updateRAF = requestAnimationFrame(() => {
                 const svg = document.getElementById('auditorium-map');
                 if(svg) svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
-                updateSeatLabels();
+                if (!isPanning) updateSeatLabels(); // Skip DOM write during panning for performance; endDrag() updates labels after pan stops
             });
         }
 
@@ -1067,13 +1087,12 @@
             isPanning = false; 
             dragStart = { x: e.clientX, y: e.clientY };
             
-            // Cache scaling calculation to prevent layout thrashing
+            // Compute the uniform scale used by preserveAspectRatio="xMidYMid meet"
+            // so that dragging feels equally accurate in both axes on any screen shape.
             const svg = document.getElementById('auditorium-map');
             const rect = svg.getBoundingClientRect();
-            dragScale = {
-                x: currentViewBox.w / rect.width,
-                y: currentViewBox.h / rect.height
-            };
+            const meetScale = Math.min(rect.width / currentViewBox.w, rect.height / currentViewBox.h);
+            dragScale = { x: 1 / meetScale, y: 1 / meetScale };
         }
 
         function drag(e) {
@@ -1105,8 +1124,8 @@
             svg.style.cursor = 'grab';
             svg.classList.remove('is-panning'); // Re-enable hovers
             
-            // Delay resetting panning slightly to prevent accidental clicks
-            setTimeout(() => { isPanning = false; }, 50);
+            // Delay resetting panning slightly to prevent accidental clicks, then refresh labels
+            setTimeout(() => { isPanning = false; updateSeatLabels(); }, 50);
         }
 
         function applyColors() {
