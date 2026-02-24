@@ -43,7 +43,7 @@
 
         /* When zoomed out (no seats visible), show sections as solid white blocks */
         .sections-blocks #sections-layer path {
-            fill: rgba(255, 255, 255, 0.18);
+            fill: rgba(255, 255, 255, 0.9);
         }
     </style>
 </head>
@@ -437,6 +437,8 @@
         let dragScale = { x: 1, y: 1 }; // Cached scaling to prevent layout thrashing
         let lastPinchDistance = null; 
         let updateRAF = null; // RequestAnimationFrame throttle
+        let wheelRAF = null; // RAF throttle for wheel events
+        let pendingWheelFactor = 1; // Accumulated zoom factor for wheel event coalescing
         let seatLabelTimer = null; // Debounce timer for seat label updates
         let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
         const SEAT_LABEL_ZOOM_THRESHOLD = 800; // Show seat numbers when viewBox width is below this
@@ -1050,7 +1052,7 @@
 
         function scheduleSeatLabels() {
             if (seatLabelTimer) clearTimeout(seatLabelTimer);
-            seatLabelTimer = setTimeout(updateSeatLabels, 80);
+            seatLabelTimer = setTimeout(updateSeatLabels, 150);
         }
 
         function updateViewBox() {
@@ -1131,7 +1133,17 @@
 
             svg.addEventListener('touchend', () => { lastPinchDistance = null; endDrag(); });
             svg.addEventListener('touchcancel', () => { lastPinchDistance = null; endDrag(); });
-            svg.addEventListener('wheel', (e) => { e.preventDefault(); zoomMap(e.deltaY > 0 ? 1.1 : 0.9); }, { passive: false });
+            svg.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                pendingWheelFactor *= (e.deltaY > 0 ? 1.1 : 0.9);
+                if (!wheelRAF) {
+                    wheelRAF = requestAnimationFrame(() => {
+                        wheelRAF = null;
+                        zoomMap(pendingWheelFactor);
+                        pendingWheelFactor = 1;
+                    });
+                }
+            }, { passive: false });
         }
 
         function startDrag(e) {
