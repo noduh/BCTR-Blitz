@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BCTR Blitz</title>
+    
+    <!-- 
+      STYLE LIBRARY (Tailwind CSS)
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        /* CUSTOM FONTS & ANIMATIONS */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; touch-action: none; }
+        
+        /* ANIMATION: Ping Once (Ripple effect) */
+        @keyframes ping-once {
+            0% { transform: scale(1); opacity: 1; }
+            75% { transform: scale(2); opacity: 0; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        .animate-ping-once {
+            animation: ping-once 0.5s cubic-bezier(0, 0, 0.2, 1);
+        }
+        
+        /* Map Cursor Styles */
+        .cursor-grab { cursor: grab; }
+        .cursor-grabbing { cursor: grabbing; }
+    </style>
+</head>
+
+<!-- MAIN APP BACKGROUND -->
+<body id="app-body" class="bg-slate-900 text-slate-100 h-screen w-screen overflow-hidden flex flex-col select-none">
+
+    <!-- HEADER BAR -->
+    <header id="app-header" class="px-4 md:px-6 py-3 bg-slate-900 border-b border-slate-800 flex justify-between items-center z-10 shrink-0 h-16">
+        <div class="flex items-center gap-2">
+            <!-- LOGO ICON (SVG) -->
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-500"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <h1 class="text-lg md:text-xl font-bold tracking-tight">BCTR <span class="text-indigo-500">BLITZ</span></h1>
+        </div>
+        
+        <!-- SCOREBOARD (Hidden in Learning/Event Mode) -->
+        <div id="game-stats" class="flex gap-4 md:gap-8 hidden opacity-0 transition-opacity duration-500">
+             <div class="text-center">
+                 <div class="text-[10px] text-slate-500 uppercase tracking-wider">Level</div>
+                 <div id="level-display" class="font-bold text-indigo-400">SECTIONS</div>
+             </div>
+             <div class="text-center">
+                 <div class="text-[10px] text-slate-500 uppercase tracking-wider">Score</div>
+                 <div id="score-display" class="font-bold text-white text-lg md:text-xl">0</div>
+             </div>
+        </div>
+        
+        <!-- MODE HEADER (Hidden by default) -->
+        <div id="mode-header" class="hidden opacity-0 transition-opacity duration-500 flex items-center">
+            <span id="mode-title" class="text-slate-400 text-xs md:text-sm font-medium tracking-wide">MODE</span>
+            <button onclick="returnToStart()" class="ml-3 md:ml-4 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs rounded border border-slate-700 transition-colors">EXIT</button>
+        </div>
+        
+        <!-- LEARNING MODE HEADER (Hidden by default) -->
+        <div id="learning-header" class="hidden opacity-0 transition-opacity duration-500 flex items-center">
+            <span class="text-slate-400 text-xs md:text-sm font-medium tracking-wide">LEARNING MODE</span>
+            <button onclick="returnToStart()" class="ml-3 md:ml-4 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs rounded border border-slate-700 transition-colors">EXIT</button>
+        </div>
+    </header>
+
+    <!-- GAMEPLAY AREA -->
+    <main id="app-main" class="flex-1 relative overflow-hidden flex items-center justify-center bg-[#0b1120]">
+        
+        <!-- START SCREEN POPUP -->
+        <div id="start-screen" class="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300">
+            <div class="bg-slate-800 p-6 md:p-8 rounded-2xl shadow-2xl border border-slate-700 text-center max-w-md w-11/12 md:w-full mx-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-500 mx-auto mb-4"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                
+                <h2 class="text-2xl font-bold mb-2">Usher Training Mode</h2>
+                <p class="text-slate-400 mb-6 text-sm">
+                    Familiarize yourself with the I-Center layout.<br/>
+                    <span class="text-indigo-400">Section A seats L-to-R. All others R-to-L.</span>
+                </p>
+                
+                <!-- START SHIFT BUTTON -->
+                <button onclick="startGame()" class="w-full py-3 md:py-4 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-white mb-3 shadow-lg shadow-indigo-900/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                    START SHIFT
+                </button>
+
+                <!-- LEARNING MODE BUTTON -->
+                <button onclick="startLearningMode()" class="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-slate-200 border border-slate-600 mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    LEARNING MODE
+                </button>
+
+                 <!-- NEW: EVENT MODE BUTTON -->
+                 <button onclick="startEventMode()" class="w-full py-3 bg-emerald-700 hover:bg-emerald-600 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-white border border-emerald-600 shadow-lg shadow-emerald-900/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    EVENT MODE
+                </button>
+            </div>
+        </div>
+        
+        <!-- LEARNING MODE CONTAINER -->
+        <div id="learning-mode-container" class="hidden absolute inset-0 pointer-events-none z-30">
+            <!-- Reuse map, this is for overlays -->
+        </div>
+
+        <!-- EVENT MODE CONTAINER (Seat Search) -->
+        <div id="event-mode-container" class="hidden absolute inset-0 bg-slate-900 z-40 flex flex-col items-center justify-center">
+             <div class="bg-slate-800 p-6 md:p-8 rounded-2xl shadow-2xl border border-slate-700 text-center max-w-md w-11/12 md:w-full mx-4">
+                <div class="flex items-center justify-center gap-3 mb-6">
+                    <div class="p-3 rounded-full bg-emerald-500/20">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-400"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white">Seat Search</h2>
+                </div>
+                
+                <div class="space-y-4 text-left">
+                    <div>
+                        <label class="block text-slate-400 text-xs uppercase font-bold mb-2">Section</label>
+                        <!-- Added text-base to inputs to prevent iOS Safari auto-zoom on focus -->
+                        <input type="text" id="search-section" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white text-base focus:outline-none focus:border-indigo-500 uppercase transition-all" placeholder="e.g. A, 07, 101">
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="flex-1">
+                            <label class="block text-slate-400 text-xs uppercase font-bold mb-2">Row</label>
+                            <input type="text" id="search-row" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white text-base focus:outline-none focus:border-indigo-500 uppercase transition-all" placeholder="e.g. A, AA">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-slate-400 text-xs uppercase font-bold mb-2">Seat</label>
+                            <input type="text" id="search-seat" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white text-base focus:outline-none focus:border-indigo-500 transition-all" placeholder="e.g. 1, 15">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="search-error" class="hidden mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm font-bold animate-pulse">
+                    Invalid Entry. Please Try Again.
+                </div>
+
+                <button onclick="handleSeatSearch()" class="w-full mt-8 py-3 md:py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> 
+                    FIND SEAT
+                </button>
+            </div>
+        </div>
+
+        <!-- GAME OVER POPUP -->
+        <div id="game-over-screen" class="hidden absolute inset-0 z-50 bg-black/80 flex items-center justify-center transition-opacity duration-300 opacity-0">
+            <div class="bg-slate-900 p-8 rounded-2xl shadow-2xl border border-slate-800 text-center w-96 mx-4">
+                <div class="text-5xl mb-4">🏁</div>
+                <h2 class="text-3xl font-bold mb-1">Time's Up!</h2>
+                <div class="text-slate-500 text-sm mb-6">Final Score Check</div>
+                
+                <div class="bg-slate-800 rounded-xl p-4 mb-6">
+                    <div id="final-score" class="text-4xl font-black text-indigo-400">0</div>
+                    <div id="final-solved" class="text-xs text-slate-500 mt-1">0 locations identified</div>
+                </div>
+
+                <button onclick="startGame()" class="w-full py-3 md:py-4 bg-white text-slate-900 hover:bg-slate-200 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"/><path d="M3 3v9h9"/></svg>
+                    RESTART
+                </button>
+            </div>
+        </div>
+
+        <!-- FLOATING PROMPT BOX (The HUD) -->
+        <div id="hud-container" class="hidden absolute top-20 md:top-24 left-1/2 -translate-x-1/2 transition-all duration-200 z-40 pointer-events-none w-11/12 md:w-auto flex justify-center">
+            <div id="hud-box" class="px-6 py-3 rounded-xl shadow-xl backdrop-blur-md border min-w-[280px] md:min-w-[320px] text-center bg-slate-800/80 border-slate-600 text-white transition-colors duration-300">
+                <div class="text-[10px] uppercase tracking-widest opacity-80 mb-1">Locate</div>
+                <div id="prompt-text" class="text-lg md:text-xl font-bold">...</div>
+            </div>
+        </div>
+
+        <!-- MAP CONTAINER -->
+        <div id="map-wrapper" class="w-full h-full flex items-center justify-center p-2 md:p-4 transition-all duration-700 opacity-50 scale-95 relative">
+            <div class="relative w-full h-full max-w-[1200px] border border-slate-800/50 rounded-xl bg-slate-900/30 overflow-hidden">
+                <!-- SVG MAP -->
+                <svg id="auditorium-map" viewBox="-250 -150 1500 2000" class="w-full h-full drop-shadow-2xl cursor-grab active:cursor-grabbing touch-none">
+                    <g transform="translate(0, 50, 0)">
+                        <!-- STATIC STAGE GRAPHIC -->
+                        <rect x="300" y="-80" width="200" height="40" fill="#1e293b" rx="4"></rect>
+                        <text x="400" y="-55" text-anchor="middle" fill="#64748b" font-size="14" font-weight="bold" letter-spacing="4">STAGE</text>
+                        
+                        <!-- LAYERS -->
+                        <g id="floor-labels-layer"></g>
+                        <g id="sections-layer"></g>
+                    </g>
+                </svg>
+
+                <!-- ZOOM CONTROLS - Made larger for touch/mobile -->
+                <div class="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-3 z-30">
+                    <button onclick="zoomMap(0.8)" class="p-3 md:p-4 bg-slate-800/90 hover:bg-slate-700 backdrop-blur-md border border-slate-600 rounded-xl shadow-xl text-white transition-colors" title="Zoom In">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                    </button>
+                    <button onclick="resetZoom()" class="p-3 md:p-4 bg-slate-800/90 hover:bg-slate-700 backdrop-blur-md border border-slate-600 rounded-xl shadow-xl text-white transition-colors" title="Reset View">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"/><path d="M3 3v9h9"/></svg>
+                    </button>
+                    <button onclick="zoomMap(1.25)" class="p-3 md:p-4 bg-slate-800/90 hover:bg-slate-700 backdrop-blur-md border border-slate-600 rounded-xl shadow-xl text-white transition-colors" title="Zoom Out">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER BAR -->
+    <footer id="app-footer" class="h-12 bg-slate-900 border-t border-slate-800 relative shrink-0">
+        <!-- TIMER BAR -->
+        <div class="absolute top-0 left-0 w-full h-1 bg-slate-800">
+             <div id="timer-bar" class="h-full bg-indigo-500 transition-all duration-100 ease-linear" style="width: 100%;"></div>
+        </div>
+        
+        <div class="flex justify-between items-center px-4 md:px-6 h-full text-xs text-slate-500">
+            <span class="hidden md:inline">Scroll/Drag to Navigate • Click to Identify</span>
+            <span class="md:hidden">Pinch to Zoom • Tap to Identify</span>
+            <span id="timer-text" class="font-mono font-bold text-lg text-slate-400">45.0s</span>
+        </div>
+    </footer>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // --- 0. COLOR PALETTE ---
+        const COLORS = {
+            appBackground: '#0f172a',
+            mapBackground: '#0b1120',
+            seatDefault: '#ffffff',
+            sectionBorder: '#334155',
+            label: '#94A3B8',
+            floorLabel: '#64748b',
+            correct: '#22c55e',
+            wrong: '#ef4444',
+            searchHighlight: '#facc15' // Yellow
+        };
+
+        // --- 0.1 DISPLAY SETTINGS ---
+        const DISPLAY = {
+            seatRadiusNormal: 4.5,       // Default seat size
+            seatRadiusLearning: 4.5,     // Seat size in Learning Mode
+            searchHighlightScale: 5      // How many times bigger a searched seat gets
+        };
+
+        // --- 1. GAME SETTINGS ---
+        const MAX_TIME = 60;       
+        const TIME_BONUS = 6;      
+        const TIME_PENALTY = 4; 
+        
+        const ROW_HEIGHT = 15;
+        const SECTION_GAP = 90;
+
+        // --- 2. AUDITORIUM SHAPE CONFIGURATION (USER EDITED) ---
+        const VENUE_CONFIG = [
+            // 0: FRONT SECTION
+            { 
+                idPrefix: '',            
+                startRow: 'A',           
+                radius: 150,           
+                angleStart: 155,         
+                angleEnd: 25,
+                sections: [
+                    { name: 'C', rows: 6, seats: [8, 10, 12, 14, 16, 16], startRow: 'DD' },
+                    { name: 'B', rows: 7, seats: [21, 23, 24, 25, 28, 27, 28],  startRow: 'EE' }, 
+                    { name: 'A', rows: 6, seats: [8, 10, 12, 14, 16, 16], startRow: 'DD' }
+                ]
+            },
+            // 1: MAIN LEVEL INNER
+            { 
+                idPrefix: '0',
+                startRow: 'A', 
+                radius: 230,             
+                angleStart: 160, 
+                angleEnd: 20,
+                sections: [
+                    { name: '7', rows: 26, seats: [12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19, 20, 20, 21] },
+                    { name: '6', rows: 26, seats: [4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11] },
+                    { name: '5', rows: 26, seats: [4, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12, 12, 13] },
+                    { name: '4', rows: 26, seats: [10, 14, 15, 16, 15, 16, 15, 16, 15, 16, 15, 16, 16, 16, 17, 16, 16, 17, 18, 18, 19] },
+                    { name: '3', rows: 26, seats: [4, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12, 12, 13] },
+                    { name: '2', rows: 26, seats: [4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11] },
+                    { name: '1', rows: 26, seats: [12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19, 20, 20, 21] }
+                ]
+            },
+            // 2: MAIN LEVEL OUTER
+            { 
+                idPrefix: '0', 
+                startRow: 'A', 
+                radius: 350,            
+                angleStart: 160, 
+                angleEnd: 20,
+                sections: [
+                    { name: '14', rows: 29, seats: [20, 20, 21, 21, 22, 22, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 26, 27, 27, 26, 26, 27, 27, 28 ] },
+                    { name: '13', rows: 29, seats: [20, 20, 21, 21, 22, 22, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 26, 27, 27, 26, 26, 27, 27, 28 ] },
+                    { name: '12', rows: 29, seats: [20, 20, 21, 21, 22, 22, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 26, 27, 27, 26, 26, 27, 27, 28 ] },
+                    { name: '11', rows: 29, seats: 26 },
+                    { name: '10', rows: 29, seats: [20, 20, 21, 21, 22, 22, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 26, 27, 27, 26, 26, 27, 27, 28 ] },
+                    { name: '9', rows: 29, seats: [20, 20, 21, 21, 22, 22, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 26, 27, 27, 26, 26, 27, 27, 28 ] },
+                    { name: '8', rows: 29, seats: [20, 20, 21, 21, 22, 22, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 26, 27, 27, 26, 26, 27, 27, 28 ] }
+                ]
+            },
+            // 3: MEZZANINE LEFT FRONT ARM (25)
+            { 
+                idPrefix: '0', 
+                startRow: 'A', 
+                radius: 380, // Will auto-adjust relative to Main Outer
+                angleStart: 150, 
+                angleEnd: 138,
+                sections: [
+                    { name: '25', rows: 27, seats: [4, 7, 7, 7, 7, 7, 8, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 14, 13, 15, 14, 15, 15, 16, 16, 17, 17, 18, 19, 19] }
+                ]
+            },
+            // 4: MEZZANINE RIGHT FRONT ARM (15)
+            { 
+                idPrefix: '0', 
+                startRow: 'A', 
+                radius: 380, 
+                angleStart: 42, 
+                angleEnd: 30,
+                sameRadiusAsPrevious: true, // Align with Left Front
+                sections: [
+                    { name: '15', rows: 27, seats: [4, 7, 7, 7, 7, 7, 8, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 14, 13, 15, 14, 15, 15, 16, 16, 17, 17, 18, 19, 19] }
+                ]
+            },
+            // 5: MEZZANINE LEFT BACK ARM (26)
+            { 
+                idPrefix: '0', 
+                startRow: 'A', 
+                radius: 500, // Will auto-adjust to be behind Front Arms
+                angleStart: 150, 
+                angleEnd: 138,
+                sections: [
+                    { name: '26', rows: 30, seats: [28, 28, 28, 29, 30, 30, 30, 31, 31, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 40, 38, 37, 36, 35, 34, 33, 32, 31, 28, 26, 22, 18] }
+                ]
+            },
+            // 6: MEZZANINE CENTER (24-17)
+            { 
+                idPrefix: '0', 
+                startRow: 'A', 
+                radius: 500, 
+                angleStart: 138, 
+                angleEnd: 42,
+                sameRadiusAsPrevious: true, // Align with Left Back
+                sections: [
+                    { name: '24', rows: 10, seats: 19 },
+                    { name: '23', rows: 10, seats: 19 },
+                    { name: '22', rows: 10, seats: 19 },
+                    { name: '21', rows: 10, seats: 19 },
+                    { name: '20', rows: 10, seats: 19 },
+                    { name: '19', rows: 10, seats: 19 },
+                    { name: '18', rows: 10, seats: 19 },
+                    { name: '17', rows: 10, seats: 19 }
+                ]
+            },
+            // 7: MEZZANINE RIGHT BACK ARM (16)
+            { 
+                idPrefix: '0', 
+                startRow: 'A', 
+                radius: 500,             
+                angleStart: 42, 
+                angleEnd: 30,
+                sameRadiusAsPrevious: true, // Align with Center/Left Back
+                sections: [
+                    { name: '16', rows: 30, seats: [28, 28, 28, 29, 30, 30, 30, 31, 31, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 40, 38, 37, 36, 35, 34, 33, 32, 31, 28, 26, 22, 18] }
+                ]
+            },
+            // 8: BALCONY (400s)
+            { 
+                idPrefix: '0', 
+                startRow: 'A', 
+                radius: 600,             
+                angleStart: 150, 
+                angleEnd: 30,
+                sections: [
+                    { name: '36', rows: 16, seats: [25, 25, 25, 25, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 3, 2] },
+                    { name: '35', rows: 15, seats: 21 },
+                    { name: '34', rows: 15, seats: 21},
+                    { name: '33', rows: 15, seats: 21 },
+                    { name: '32', rows: 15, seats: 21},
+                    { name: '31', rows: 15, seats: 21 },
+                    { name: '30', rows: 15, seats: 21 },
+                    { name: '29', rows: 15, seats: 21 },
+                    { name: '28', rows: 15, seats: 21 },
+                    { name: '27', rows: 15, seats: 21 },
+                    { name: '26', rows: 16, seats: [25, 25, 25, 25, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 3, 2] }
+                ]
+            },
+        ];
+
+        // --- 3. AMENITIES (ICONS) CONFIGURATION ---
+        const AMENITIES = []; // Empty, as requested
+
+        // --- INTERNAL VARIABLES ---
+        let gameState = 'start'; 
+        let score = 0;
+        let solvedCount = 0;
+        let timeLeft = MAX_TIME;
+        let currentPrompt = null;
+        let feedback = null; 
+        let timerInterval = null;
+        let lastClickedId = null;
+
+        // --- ZOOM & PAN VARIABLES ---
+        const INITIAL_VIEWBOX = { x: -250, y: -150, w: 1500, h: 2000 };
+        let currentViewBox = { ...INITIAL_VIEWBOX };
+        let isDragging = false;
+        let isPanning = false; 
+        let dragStart = { x: 0, y: 0 };
+        let lastPinchDistance = null; // Used for tablet pinch-to-zoom
+        
+        // --- MATH HELPERS ---
+        function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+            const angleInRadians = (angleInDegrees) * Math.PI / 180.0;
+            return {
+                x: centerX + (radius * Math.cos(angleInRadians)),
+                y: centerY + (radius * Math.sin(angleInRadians))
+            };
+        }
+
+        function getSectionPolygon(cx, cy, rInner, rOuter, startAngle, endAngle) {
+            const p1 = polarToCartesian(cx, cy, rOuter, startAngle);
+            const p2 = polarToCartesian(cx, cy, rOuter, endAngle);
+            const p3 = polarToCartesian(cx, cy, rInner, endAngle);
+            const p4 = polarToCartesian(cx, cy, rInner, startAngle);
+
+            return `M ${p4.x} ${p4.y} L ${p1.x} ${p1.y} A ${rOuter} ${rOuter} 0 0 0 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${rInner} ${rInner} 0 0 1 ${p4.x} ${p4.y} Z`;
+        }
+
+        // --- HELPER: Get Tier Depth ---
+        function getTierMaxRows(config) {
+            if (config.sections) {
+                return Math.max(...config.sections.map(s => s.rows));
+            }
+            return config.rows;
+        }
+
+        // --- HELPER: Get End Radius for a Specific Config Index ---
+        function getEndRadius(index) {
+            const config = VENUE_CONFIG[index];
+            const rows = getTierMaxRows(config);
+            return config.radius + (rows * ROW_HEIGHT);
+        }
+
+        // --- HELPER: Get Smart Row Name ---
+        function getRowName(startRowStr, rowIndex) {
+            let baseRepeat = startRowStr.length; 
+            let startCharCode = startRowStr.charCodeAt(0);
+            let currentVal = (startCharCode - 65) + rowIndex;
+            
+            while (currentVal > 25) {
+                currentVal -= 26;
+                baseRepeat++;
+            }
+            
+            const letter = String.fromCharCode(65 + currentVal);
+            return letter.repeat(baseRepeat);
+        }
+
+        // --- GAME LOGIC ---
+
+        function getRandomItem(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        function generatePrompt(count) {
+            const allSections = [];
+            
+            VENUE_CONFIG.forEach(config => {
+                let tierSections = [];
+                if (config.sections) {
+                    tierSections = config.sections;
+                } else {
+                    tierSections = config.names.map(name => ({
+                        name: name,
+                        rows: config.rows,
+                        seats: config.seats
+                    }));
+                }
+
+                tierSections.forEach(section => {
+                    const secId = `${config.idPrefix}${section.name}`;
+                    allSections.push({ 
+                        id: `section-${secId}`, 
+                        name: secId, 
+                        config: { 
+                            ...config, 
+                            rows: section.rows, 
+                            seats: section.seats, 
+                            startRow: section.startRow || config.startRow 
+                        } 
+                    });
+                });
+            });
+
+            if (count < 5) {
+                // Easy Sections
+                const target = getRandomItem(allSections);
+                return { id: target.id, text: `Find Section ${target.name}`, type: 'section' };
+            }
+
+            if (count < 12) {
+                // Easy Rows
+                const targetSec = getRandomItem(allSections);
+                const randomRowIndex = Math.floor(Math.random() * targetSec.config.rows);
+                const finalRowLabel = getRowName(targetSec.config.startRow, randomRowIndex);
+
+                return {
+                    id: `row-${targetSec.name}-${finalRowLabel}`,
+                    text: `Sec ${targetSec.name}, Row ${finalRowLabel} (Any Seat)`,
+                    type: 'row'
+                };
+            }
+            
+            if (count < 19) {
+                // Easy Seats
+                const targetSec = getRandomItem(allSections);
+                const randomRowIndex = Math.floor(Math.random() * targetSec.config.rows);
+                let seatCount = targetSec.config.seats;
+                if (Array.isArray(seatCount)) {
+                    seatCount = seatCount[randomRowIndex] || seatCount[seatCount.length - 1];
+                }
+                const randomSeatNum = Math.floor(Math.random() * seatCount) + 1;
+                const finalRowLabel = getRowName(targetSec.config.startRow, randomRowIndex);
+
+                return {
+                    id: `seat-${targetSec.name}-${finalRowLabel}-${randomSeatNum}`,
+                    text: `Sec ${targetSec.name}, Row ${finalRowLabel}, Seat ${randomSeatNum}`,
+                    type: 'seat'
+                };
+            }
+            
+            if (count < 24) {
+                // Hard Sections
+                const target = getRandomItem(allSections);
+                return { id: target.id, text: `Find Section ${target.name}`, type: 'section' };
+            }
+            
+            if (count < 31) {
+                // Hard Rows
+                const targetSec = getRandomItem(allSections);
+                const randomRowIndex = Math.floor(Math.random() * targetSec.config.rows);
+                const finalRowLabel = getRowName(targetSec.config.startRow, randomRowIndex);
+
+                return {
+                    id: `row-${targetSec.name}-${finalRowLabel}`,
+                    text: `Sec ${targetSec.name}, Row ${finalRowLabel} (Any Seat)`,
+                    type: 'row'
+                };
+            }
+
+            // Hard Seats
+            const targetSec = getRandomItem(allSections);
+            const randomRowIndex = Math.floor(Math.random() * targetSec.config.rows);
+            
+            let seatCount = targetSec.config.seats;
+            if (Array.isArray(seatCount)) {
+                seatCount = seatCount[randomRowIndex] || seatCount[seatCount.length - 1];
+            }
+            
+            const randomSeatNum = Math.floor(Math.random() * seatCount) + 1;
+            const finalRowLabel = getRowName(targetSec.config.startRow, randomRowIndex);
+
+            return {
+                id: `seat-${targetSec.name}-${finalRowLabel}-${randomSeatNum}`,
+                text: `Sec ${targetSec.name}, Row ${finalRowLabel}, Seat ${randomSeatNum}`,
+                type: 'seat'
+            };
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            solvedCount = 0;
+            timeLeft = MAX_TIME;
+            feedback = null;
+            lastClickedId = null;
+
+            document.getElementById('start-screen').classList.add('hidden', 'opacity-0');
+            document.getElementById('game-over-screen').classList.add('hidden', 'opacity-0');
+            document.getElementById('game-over-screen').classList.remove('flex');
+            document.getElementById('game-stats').classList.remove('hidden', 'opacity-0');
+            document.getElementById('hud-container').classList.remove('hidden');
+            
+            // Hide learning/event headers
+            const learningHeader = document.getElementById('learning-header');
+            if(learningHeader) learningHeader.classList.add('hidden', 'opacity-0');
+
+            const modeHeader = document.getElementById('mode-header');
+            if(modeHeader) modeHeader.classList.add('hidden', 'opacity-0');
+            
+            // Map
+            const mapWrapper = document.getElementById('map-wrapper');
+            mapWrapper.classList.remove('opacity-50', 'scale-95', 'hidden');
+            mapWrapper.classList.add('opacity-100', 'scale-100');
+
+            resetMapVisuals();
+            resetZoom(); 
+            autoAdjustLayout();
+            drawMap(); 
+            currentPrompt = generatePrompt(0);
+            updateHUD();
+
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(gameLoop, 100); 
+        }
+
+        // LEARNING MODE
+        function startLearningMode() {
+            gameState = 'learning';
+            document.getElementById('start-screen').classList.add('hidden', 'opacity-0');
+            
+            // Show header
+            const lHeader = document.getElementById('learning-header');
+            lHeader.classList.remove('hidden');
+            setTimeout(() => lHeader.classList.remove('opacity-0'), 10);
+
+            // Show map
+            const mapWrapper = document.getElementById('map-wrapper');
+            mapWrapper.classList.remove('opacity-50', 'scale-95', 'hidden');
+            mapWrapper.classList.add('opacity-100', 'scale-100');
+            
+            resetMapVisuals();
+            resetZoom();
+            autoAdjustLayout();
+            drawMap(); 
+        }
+
+        // EVENT MODE
+        function startEventMode() {
+            gameState = 'event'; 
+            document.getElementById('start-screen').classList.add('hidden', 'opacity-0');
+            
+            // Show generic Mode header
+            const mHeader = document.getElementById('mode-header');
+            document.getElementById('mode-title').innerText = "SEAT SEARCH";
+            mHeader.classList.remove('hidden');
+            setTimeout(() => mHeader.classList.remove('opacity-0'), 10);
+            
+            // Show Event Search Container
+            const eContainer = document.getElementById('event-mode-container');
+            eContainer.classList.remove('hidden');
+            
+            // Hide Map initially (will show after search)
+            document.getElementById('map-wrapper').classList.add('hidden');
+            
+            // Prepare map in background (layout, draw) so IDs exist for search
+            resetMapVisuals();
+            autoAdjustLayout();
+            drawMap();
+        }
+
+        function handleSeatSearch() {
+            const secInput = document.getElementById('search-section').value.trim().toUpperCase();
+            const rowInput = document.getElementById('search-row').value.trim().toUpperCase();
+            const seatInput = document.getElementById('search-seat').value.trim();
+
+            const errorBox = document.getElementById('search-error');
+            errorBox.classList.add('hidden');
+
+            if (!secInput || !rowInput || !seatInput) {
+                errorBox.textContent = "Please fill in all fields.";
+                errorBox.classList.remove('hidden');
+                return;
+            }
+
+            // Try exact match first
+            let targetId = `seat-${secInput}-${rowInput}-${seatInput}`;
+            let el = document.getElementById(targetId);
+
+            // Try adding '0' prefix to section if it's a number (e.g. user typed 7, ID is 07)
+            if (!el && !isNaN(secInput)) {
+                targetId = `seat-0${secInput}-${rowInput}-${seatInput}`;
+                el = document.getElementById(targetId);
+            }
+            
+            // Try removing '0' prefix if user typed 07 but ID is 7 (unlikely based on config but safe)
+            if (!el && secInput.startsWith('0')) {
+                targetId = `seat-${secInput.substring(1)}-${rowInput}-${seatInput}`;
+                el = document.getElementById(targetId);
+            }
+
+            if (el) {
+                // Found
+                document.getElementById('event-mode-container').classList.add('hidden');
+                const mapWrapper = document.getElementById('map-wrapper');
+                mapWrapper.classList.remove('hidden', 'opacity-50', 'scale-95');
+                mapWrapper.classList.add('opacity-100', 'scale-100');
+
+                resetMapVisuals();
+                el.setAttribute('fill', COLORS.searchHighlight);
+                
+                // Make bigger based on setting
+                const currentR = parseFloat(el.getAttribute('r'));
+                el.setAttribute('r', currentR * DISPLAY.searchHighlightScale);
+                
+                // Add pulse for visibility
+                el.classList.add('animate-pulse');
+                
+                // Bring to front
+                el.parentNode.appendChild(el);
+            } else {
+                errorBox.textContent = "Invalid Entry. Please Try Again.";
+                errorBox.classList.remove('hidden');
+            }
+        }
+
+        // RETURN TO START
+        function returnToStart() {
+            gameState = 'start';
+            if (timerInterval) clearInterval(timerInterval);
+            
+            const learningHeader = document.getElementById('learning-header');
+            if (learningHeader) {
+                learningHeader.classList.add('hidden', 'opacity-0');
+            }
+            const modeHeader = document.getElementById('mode-header');
+            if (modeHeader) {
+                modeHeader.classList.add('hidden', 'opacity-0');
+            }
+            const learningContainer = document.getElementById('learning-mode-container');
+            if (learningContainer) {
+                learningContainer.classList.add('hidden');
+            }
+            const eventContainer = document.getElementById('event-mode-container');
+            if (eventContainer) {
+                eventContainer.classList.add('hidden');
+                // Reset inputs using checks
+                const sSec = document.getElementById('search-section');
+                if(sSec) sSec.value = '';
+                const sRow = document.getElementById('search-row');
+                if(sRow) sRow.value = '';
+                const sSeat = document.getElementById('search-seat');
+                if(sSeat) sSeat.value = '';
+                const sErr = document.getElementById('search-error');
+                if(sErr) sErr.classList.add('hidden');
+            }
+
+            document.getElementById('start-screen').classList.remove('hidden', 'opacity-0');
+            
+            const mapWrapper = document.getElementById('map-wrapper');
+            mapWrapper.classList.remove('hidden', 'opacity-100', 'scale-100');
+            mapWrapper.classList.add('opacity-50', 'scale-95');
+            
+            drawMap();
+        }
+
+
+        function endGame() {
+            gameState = 'gameover';
+            clearInterval(timerInterval);
+            
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('final-solved').innerText = `${solvedCount} locations identified`;
+            
+            const goScreen = document.getElementById('game-over-screen');
+            goScreen.classList.remove('hidden');
+            void goScreen.offsetWidth; 
+            goScreen.classList.remove('opacity-0');
+            goScreen.classList.add('flex');
+            
+            document.getElementById('hud-container').classList.add('hidden');
+        }
+
+        function gameLoop() {
+            if (timeLeft <= 0) {
+                endGame();
+                return;
+            }
+            timeLeft -= 0.1;
+            updateTimerUI();
+        }
+
+        function updateTimerUI() {
+            const pct = Math.max(0, (timeLeft / MAX_TIME) * 100);
+            const bar = document.getElementById('timer-bar');
+            bar.style.width = `${pct}%`;
+            
+            if (timeLeft < 10) {
+                bar.classList.remove('bg-indigo-500');
+                bar.classList.add('bg-red-500');
+                document.getElementById('timer-text').classList.add('text-red-400', 'animate-pulse');
+            } else {
+                bar.classList.add('bg-indigo-500');
+                bar.classList.remove('bg-red-500');
+                document.getElementById('timer-text').classList.remove('text-red-400', 'animate-pulse');
+            }
+            
+            document.getElementById('timer-text').innerText = Math.ceil(timeLeft).toFixed(1) + 's';
+        }
+
+        function updateHUD() {
+            if(!currentPrompt) return;
+            document.getElementById('prompt-text').innerText = currentPrompt.text;
+            document.getElementById('score-display').innerText = score;
+            
+            let levelText = 'SECTIONS';
+            if (solvedCount < 5) levelText = 'SECTIONS (EASY)';
+            else if (solvedCount < 12) levelText = 'ROWS (EASY)';
+            else if (solvedCount < 19) levelText = 'SEATS (EASY)';
+            else if (solvedCount < 24) levelText = 'SECTIONS';
+            else if (solvedCount < 31) levelText = 'ROWS';
+            else levelText = 'SEATS';
+
+            document.getElementById('level-display').innerText = levelText;
+
+            const hudBox = document.getElementById('hud-box');
+            if (feedback === 'correct') {
+                hudBox.className = "px-6 py-3 rounded-xl shadow-xl backdrop-blur-md border min-w-[320px] text-center bg-green-500/90 border-green-400 text-white transition-colors duration-200";
+            } else if (feedback === 'wrong') {
+                hudBox.className = "px-6 py-3 rounded-xl shadow-xl backdrop-blur-md border min-w-[320px] text-center bg-red-500/90 border-red-400 text-white transition-colors duration-200";
+            } else {
+                hudBox.className = "px-6 py-3 rounded-xl shadow-xl backdrop-blur-md border min-w-[320px] text-center bg-slate-800/80 border-slate-600 text-white transition-colors duration-200";
+            }
+        }
+
+        function handleInteraction(id) {
+            if (isPanning) return;
+            
+            // In Learning Mode, don't score, just highlight briefly? Or maybe allow selection?
+            // For now, let's just ignore interaction or maybe console log.
+            if (gameState === 'learning' || gameState === 'event') return;
+
+            if (gameState !== 'playing' || !currentPrompt || feedback) return;
+
+            let isCorrect = false;
+            const clickedParts = id.split('-'); 
+
+            if (currentPrompt.type === 'section') {
+                 const targetSec = currentPrompt.id.split('-')[1];
+                 if (id === currentPrompt.id) isCorrect = true;
+                 if (clickedParts[0] === 'seat' && clickedParts[1] === targetSec) isCorrect = true;
+            }
+            else if (currentPrompt.type === 'row') {
+                 const targetSec = currentPrompt.id.split('-')[1];
+                 const targetRow = currentPrompt.id.split('-')[2];
+                 if (clickedParts[0] === 'seat' && 
+                     clickedParts[1] === targetSec && 
+                     clickedParts[2] === targetRow) {
+                     isCorrect = true;
+                 }
+            }
+            else {
+                isCorrect = id === currentPrompt.id;
+            }
+
+            lastClickedId = id;
+
+            if (isCorrect) {
+                feedback = 'correct';
+                score += (100 + solvedCount * 5);      
+                timeLeft = Math.min(timeLeft + TIME_BONUS, 90); 
+                solvedCount++;
+                
+                highlightElement(id, 'correct'); 
+                updateHUD();
+                
+                setTimeout(() => {
+                    feedback = null;
+                    lastClickedId = null;
+                    currentPrompt = generatePrompt(solvedCount);
+                    updateHUD();
+                    
+                    if (solvedCount === 19) {
+                        // Transition from Easy to Hard - labels disappear!
+                        drawMap(); 
+                    } else {
+                        resetMapVisuals(); 
+                    }
+                }, 500);
+
+            } else {
+                feedback = 'wrong';
+                timeLeft = Math.max(timeLeft - TIME_PENALTY, 0); 
+                
+                highlightElement(id, 'wrong'); 
+                updateHUD();
+
+                setTimeout(() => {
+                    feedback = null;
+                    updateHUD();
+                    resetMapVisuals();
+                }, 500);
+            }
+        }
+
+        function autoAdjustLayout() {
+            adjustSectionDepth(1, [0]);
+            adjustSectionDepth(2, [1]);
+            adjustSectionDepth(3, [2]);
+            VENUE_CONFIG[4].radius = VENUE_CONFIG[3].radius; 
+
+            const startBackArms = Math.max(getEndRadius(3), getEndRadius(4)) + SECTION_GAP;
+            VENUE_CONFIG[5].radius = startBackArms;
+            VENUE_CONFIG[7].radius = startBackArms;
+
+            const maxBackArmEnd = Math.max(getEndRadius(5), getEndRadius(7));
+            const centerRows = getTierMaxRows(VENUE_CONFIG[6]);
+            const centerDepth = centerRows * ROW_HEIGHT;
+            const desiredCenterStart = maxBackArmEnd - centerDepth;
+            const minCenterStart = getEndRadius(2) + SECTION_GAP;
+            VENUE_CONFIG[6].radius = Math.max(desiredCenterStart, minCenterStart); 
+
+            adjustSectionDepth(8, [5, 6, 7]);
+        }
+
+        function adjustSectionDepth(targetIndex, dependencyIndices) {
+            let maxPrevEnd = 0;
+            
+            dependencyIndices.forEach(idx => {
+                const end = getEndRadius(idx);
+                if (end > maxPrevEnd) maxPrevEnd = end;
+            });
+
+            const requiredStart = maxPrevEnd + SECTION_GAP;
+            
+            if (VENUE_CONFIG[targetIndex].radius < requiredStart) {
+                VENUE_CONFIG[targetIndex].radius = requiredStart;
+            }
+        }
+
+        function createSVGElement(tag, attrs) {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+            for (let key in attrs) {
+                if(key === 'textContent') {
+                    el.textContent = attrs[key];
+                } else if (key.startsWith('on')) {
+                    const eventName = key.substring(2).toLowerCase();
+                    el.addEventListener(eventName, attrs[key]);
+                } else {
+                    el.setAttribute(key, attrs[key]);
+                }
+            }
+            return el;
+        }
+
+        function drawMap() {
+            const centerX = 400;
+            const centerY = 50;
+            const sectionsLayer = document.getElementById('sections-layer');
+            const labelsLayer = document.getElementById('floor-labels-layer');
+            const amenitiesLayer = document.getElementById('amenities-layer');
+            
+            if (sectionsLayer) sectionsLayer.innerHTML = '';
+            if (labelsLayer) labelsLayer.innerHTML = '';
+            if (amenitiesLayer) amenitiesLayer.innerHTML = '';
+
+            const showLabels = gameState === 'learning' || (gameState === 'playing' && solvedCount < 19);
+
+            VENUE_CONFIG.forEach(config => {
+                let tierSections = [];
+                if (config.sections) {
+                    tierSections = config.sections;
+                } else {
+                    tierSections = config.names.map(name => ({
+                        name: name,
+                        rows: config.rows,
+                        seats: config.seats
+                    }));
+                }
+
+                const totalAngle = config.angleStart - config.angleEnd;
+                const sectionAngle = totalAngle / tierSections.length;
+
+                tierSections.forEach((section, secIdx) => {
+                    const secId = `${config.idPrefix}${section.name}`;
+                    
+                    const thisSecStartAngle = config.angleStart - (secIdx * sectionAngle);
+                    const thisSecEndAngle = thisSecStartAngle - sectionAngle;
+                    const midAngle = (thisSecStartAngle + thisSecEndAngle) / 2;
+                    
+                    const gap = (25 / config.radius) * (180 / Math.PI); // Dynamic gap ~25px
+                    const drawStart = thisSecStartAngle - gap/2;
+                    const drawEnd = thisSecEndAngle + gap/2;
+
+                    const sectionDepth = section.rows * ROW_HEIGHT;
+
+                    const pathData = getSectionPolygon(centerX, centerY, config.radius, config.radius + sectionDepth, drawStart, drawEnd);
+                    const pathEl = createSVGElement('path', {
+                        d: pathData,
+                        fill: 'transparent',
+                        stroke: COLORS.sectionBorder, 
+                        'stroke-width': '1',
+                        id: `section-${secId}`,
+                        class: 'cursor-pointer transition-colors hover:fill-white/10',
+                        onClick: (e) => { e.stopPropagation(); handleInteraction(`section-${secId}`); }
+                    });
+                    if (sectionsLayer) sectionsLayer.appendChild(pathEl);
+
+                    const labelPos = polarToCartesian(centerX, centerY, config.radius - 20, midAngle);
+                    const rotation = midAngle - 90;
+                    const textEl = createSVGElement('text', {
+                        x: labelPos.x,
+                        y: labelPos.y,
+                        fill: COLORS.label,
+                        'font-size': '12',
+                        'font-weight': 'bold',
+                        'text-anchor': 'middle',
+                        transform: `rotate(${rotation}, ${labelPos.x}, ${labelPos.y})`,
+                        class: 'pointer-events-none select-none',
+                        textContent: secId
+                    });
+                    if (sectionsLayer) sectionsLayer.appendChild(textEl);
+
+                    const rowDepth = ROW_HEIGHT;
+                    const isSectionA = secId === 'A';
+
+                    for(let r=0; r < section.rows; r++) {
+                        const rowRadius = config.radius + (r * rowDepth) + (rowDepth/2);
+                        
+                        const startRowVal = section.startRow || config.startRow;
+                        const rowLabel = getRowName(startRowVal, r);
+
+                        // ROW LABELS IN LEARNING MODE OR EARLY GAME
+                        if (showLabels) {
+                            const labelOffsetDeg = (10 / rowRadius) * (180 / Math.PI);
+                            const rowLabelPos = polarToCartesian(centerX, centerY, rowRadius, drawEnd - labelOffsetDeg);
+                            
+                            const rowLabelText = createSVGElement('text', {
+                                x: rowLabelPos.x,
+                                y: rowLabelPos.y,
+                                fill: COLORS.label,
+                                'font-size': '8', 
+                                'font-weight': 'bold',
+                                'text-anchor': 'start',
+                                'alignment-baseline': 'middle',
+                                textContent: rowLabel
+                            });
+                             rowLabelText.setAttribute('transform', `rotate(${drawEnd - 93}, ${rowLabelPos.x}, ${rowLabelPos.y})`);
+                             if (sectionsLayer) sectionsLayer.appendChild(rowLabelText);
+                        }
+
+                        let seatsInRow = section.seats;
+                        if (Array.isArray(seatsInRow)) {
+                            seatsInRow = seatsInRow[r] || seatsInRow[seatsInRow.length - 1];
+                        }
+
+                        for(let s=0; s < seatsInRow; s++) {
+                            const t = (s + 0.5) / seatsInRow; 
+                            const seatAngle = drawStart - (t * (drawStart - drawEnd));
+                            const pos = polarToCartesian(centerX, centerY, rowRadius, seatAngle);
+                            
+                            let seatNum;
+                            if (isSectionA) {
+                                seatNum = s + 1; 
+                            } else {
+                                seatNum = seatsInRow - s; 
+                            }
+
+                            const fullSeatId = `seat-${secId}-${rowLabel}-${seatNum}`;
+                            
+                            const seatRadius = showLabels ? DISPLAY.seatRadiusLearning : DISPLAY.seatRadiusNormal;
+
+                            const circleEl = createSVGElement('circle', {
+                                cx: pos.x,
+                                cy: pos.y,
+                                r: seatRadius,
+                                fill: COLORS.seatDefault, 
+                                id: fullSeatId,
+                                class: 'cursor-pointer hover:fill-white transition-all',
+                                onClick: (e) => { e.stopPropagation(); handleInteraction(fullSeatId); }
+                            });
+                            if (sectionsLayer) sectionsLayer.appendChild(circleEl);
+
+                            if (showLabels) {
+                                const seatText = createSVGElement('text', {
+                                    x: pos.x,
+                                    y: pos.y,
+                                    fill: '#000000', 
+                                    'font-size': '3', 
+                                    'text-anchor': 'middle',
+                                    'alignment-baseline': 'central',
+                                    'pointer-events': 'none',
+                                    textContent: seatNum
+                                });
+                                seatText.setAttribute('dy', '1'); 
+                                if (sectionsLayer) sectionsLayer.appendChild(seatText); 
+                            }
+                        }
+                    }
+                });
+            });
+
+            const floorLabels = [
+                { text: "MAIN FLOOR", targetConfigIndex: 0, angle: 90, offset: -70 },
+                { text: "MEZZANINE", targetConfigIndex: 6, angle: 90, offset: -60 },
+                { text: "BALCONY", targetConfigIndex: 8, angle: 90, offset: -60 }
+            ];
+
+            floorLabels.forEach(label => {
+                const config = VENUE_CONFIG[label.targetConfigIndex];
+                const labelRadius = config.radius + (label.offset || 0);
+                
+                const pos = polarToCartesian(centerX, centerY, labelRadius, label.angle);
+                
+                const textEl = createSVGElement('text', {
+                    x: pos.x,
+                    y: pos.y,
+                    fill: COLORS.floorLabel, 
+                    'font-size': '14',
+                    'font-weight': 'bold',
+                    'text-anchor': 'middle', 
+                    'alignment-baseline': 'middle',
+                    class: 'pointer-events-none select-none tracking-widest',
+                    textContent: label.text
+                });
+                
+                textEl.setAttribute('transform', `rotate(0, ${pos.x}, ${pos.y})`);
+                
+                if (labelsLayer) labelsLayer.appendChild(textEl);
+            });
+            
+            if (amenitiesLayer) {
+                AMENITIES.forEach(am => {
+                    const g = createSVGElement('g', {
+                        transform: `translate(${am.x}, ${am.y})`,
+                        class: 'cursor-pointer hover:opacity-80 amenity-group',
+                        id: am.id,
+                        onClick: (e) => { e.stopPropagation(); handleInteraction(am.id); }
+                    });
+
+                    const circle = createSVGElement('circle', {
+                        r: 20,
+                        fill: '#334155',
+                        class: 'transition-colors'
+                    });
+                    
+                    g.appendChild(circle);
+                    if (amenitiesLayer) amenitiesLayer.appendChild(g);
+                });
+            }
+        }
+
+        function highlightElement(id, status) {
+            const el = document.getElementById(id);
+            if (!el) return;
+
+            const color = status === 'correct' ? COLORS.correct : COLORS.wrong; 
+
+            if (el.tagName === 'g') {
+                el.querySelector('circle').setAttribute('fill', color);
+            } else {
+                el.setAttribute('fill', color);
+            }
+        }
+
+        function resetMapVisuals() {
+            const paths = document.querySelectorAll('#sections-layer path');
+            paths.forEach(p => {
+                p.setAttribute('fill', 'transparent'); 
+                p.setAttribute('stroke', COLORS.sectionBorder);
+            });
+
+            const circles = document.querySelectorAll('#sections-layer circle');
+            const showLabels = gameState === 'learning' || (gameState === 'playing' && solvedCount < 19);
+            const defaultR = showLabels ? DISPLAY.seatRadiusLearning : DISPLAY.seatRadiusNormal; 
+            circles.forEach(c => {
+                c.setAttribute('fill', COLORS.seatDefault);
+                c.setAttribute('r', defaultR); 
+                c.classList.remove('animate-pulse'); 
+            });
+        }
+
+        function updateViewBox() {
+            const svg = document.getElementById('auditorium-map');
+            svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
+        }
+
+        function resetZoom() {
+            currentViewBox = { ...INITIAL_VIEWBOX };
+            updateViewBox();
+        }
+
+        function zoomMap(factor) {
+            const newW = currentViewBox.w * factor;
+            const newH = currentViewBox.h * factor;
+            
+            const dW = currentViewBox.w - newW;
+            const dH = currentViewBox.h - newH;
+
+            currentViewBox.x += dW / 2;
+            currentViewBox.y += dH / 2;
+            currentViewBox.w = newW;
+            currentViewBox.h = newH;
+            
+            updateViewBox();
+        }
+
+        function setupZoomPanEvents() {
+            const svg = document.getElementById('auditorium-map');
+            
+            svg.addEventListener('mousedown', startDrag);
+            svg.addEventListener('mousemove', drag);
+            svg.addEventListener('mouseup', endDrag);
+            svg.addEventListener('mouseleave', endDrag);
+            
+            svg.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    lastPinchDistance = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                } else if (e.touches.length === 1) {
+                    startDrag(e.touches[0]);
+                }
+            }, { passive: false });
+
+            svg.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2) {
+                    e.preventDefault();
+                    if (lastPinchDistance !== null) {
+                        const currentDistance = Math.hypot(
+                            e.touches[0].clientX - e.touches[1].clientX,
+                            e.touches[0].clientY - e.touches[1].clientY
+                        );
+                        const factor = lastPinchDistance / currentDistance;
+                        const smoothedFactor = 1 + (factor - 1) * 0.75;
+                        zoomMap(smoothedFactor);
+                        lastPinchDistance = currentDistance;
+                    }
+                } else if (e.touches.length === 1) {
+                    drag(e.touches[0]);
+                }
+            }, { passive: false });
+
+            svg.addEventListener('touchend', (e) => {
+                lastPinchDistance = null;
+                endDrag();
+            });
+
+            svg.addEventListener('touchcancel', (e) => {
+                lastPinchDistance = null;
+                endDrag();
+            });
+
+            svg.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const factor = e.deltaY > 0 ? 1.1 : 0.9;
+                zoomMap(factor);
+            }, { passive: false });
+        }
+
+        function startDrag(e) {
+            isDragging = true;
+            isPanning = false; 
+            dragStart = { x: e.clientX, y: e.clientY };
+        }
+
+        function drag(e) {
+            if (!isDragging) return;
+            
+            const dx = e.clientX - dragStart.x;
+            const dy = e.clientY - dragStart.y;
+
+            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                isPanning = true;
+                document.getElementById('auditorium-map').style.cursor = 'grabbing';
+            }
+
+            const svg = document.getElementById('auditorium-map');
+            const rect = svg.getBoundingClientRect();
+            
+            const scaleX = currentViewBox.w / rect.width; 
+            const scaleY = currentViewBox.h / rect.height; 
+            
+            currentViewBox.x -= dx * scaleX;
+            currentViewBox.y -= dy * scaleY;
+
+            updateViewBox();
+
+            dragStart = { x: e.clientX, y: e.clientY };
+        }
+
+        function endDrag() {
+            isDragging = false;
+            document.getElementById('auditorium-map').style.cursor = 'grab';
+        }
+
+        function applyColors() {
+            document.body.style.backgroundColor = COLORS.appBackground;
+            
+            const headers = document.querySelectorAll('#app-header, #app-footer');
+            headers.forEach(el => el.style.backgroundColor = COLORS.appBackground);
+            
+            const main = document.getElementById('app-main');
+            if(main) main.style.backgroundColor = COLORS.mapBackground;
+        }
+
+        window.onload = function() {
+            applyColors();
+            autoAdjustLayout(); 
+            drawMap();
+            setupZoomPanEvents();
+        };
+
+    </script>
+</body>
+</html>
