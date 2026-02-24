@@ -33,6 +33,8 @@
         /* Performance utilities */
         .will-change-transform { will-change: transform; }
         #map-wrapper { contain: layout paint; }
+        /* Force the SVG onto its own GPU compositor layer for hardware-accelerated rendering */
+        #auditorium-map { transform: translateZ(0); }
         
         /* Massive Performance Boost: Disables hover calculations on 15k elements while panning */
         .is-panning * {
@@ -190,6 +192,7 @@
                         <!-- DYNAMIC LAYERS -->
                         <g id="floor-labels-layer"></g>
                         <g id="sections-layer"></g>
+                        <g id="seat-circles-layer"></g>
                         <g id="seat-labels-layer"></g>
                     </g>
                 </svg>
@@ -418,6 +421,7 @@
         let lastClickedId = null;
 
         let activeHighlights = []; // Tracking highlighted elements for O(1) resetting
+        let seatHighlightState = {}; // id -> color map for re-applying highlights after circle layer rebuilds
 
         // --- ZOOM & PAN VARIABLES ---
         const INITIAL_VIEWBOX = { x: -250, y: -150, w: 1500, h: 2000 };
@@ -429,7 +433,8 @@
         let lastPinchDistance = null; 
         let updateRAF = null; // RequestAnimationFrame throttle
         let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
-        const SEAT_LABEL_ZOOM_THRESHOLD = 300; // Show seat numbers when viewBox width is below this
+        const SEAT_LABEL_ZOOM_THRESHOLD = 600; // Show seat numbers when viewBox width is below this
+        const SEAT_CIRCLE_ZOOM_THRESHOLD = 1000; // Show seat circles when viewBox width is below this
         
         // --- MATH HELPERS ---
         function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
@@ -902,11 +907,8 @@
                             let seatNum = isSectionA ? s + 1 : seatsInRow - s; 
                             const fullSeatId = `seat-${secId}-${rowLabel}-${seatNum}`;
                             
-                            // Seat Circle
-                            sectionsHTML += `<circle cx="${pos.x}" cy="${pos.y}" id="${fullSeatId}" fill="${COLORS.seatDefault}" class="seat-circle cursor-pointer hover:fill-white"></circle>`;
-                            
-                            // Store lightweight data for dynamic label rendering
-                            seatLabelData.push({ x: pos.x, y: pos.y, n: seatNum });
+                            // Store data for dynamic viewport-culled rendering of circles and labels
+                            seatLabelData.push({ x: pos.x, y: pos.y, n: seatNum, id: fullSeatId });
                         }
                     }
                 });
@@ -938,6 +940,7 @@
             
             if (el.tagName === 'circle') {
                 el.setAttribute('fill', color);
+                seatHighlightState[id] = color; // Track for re-application after circle layer rebuild
                 if (scaleR) {
                     el.style.transformOrigin = `${el.getAttribute('cx')}px ${el.getAttribute('cy')}px`;
                     el.style.transform = `scale(${DISPLAY.searchHighlightScale})`;
@@ -955,28 +958,34 @@
             activeHighlights.forEach(item => {
                 const el = item.el;
                 if (item.type === 'circle') {
-                    el.setAttribute('fill', COLORS.seatDefault);
+                    // Circles are dynamically re-rendered; use isConnected to skip detached elements
+                    if (el.isConnected) el.setAttribute('fill', COLORS.seatDefault);
                 } else if (item.type === 'path') {
+                    // Paths are static DOM elements in sections-layer and are never detached
                     el.setAttribute('fill', 'transparent'); 
                 }
                 
-                if (item.scaled) {
+                if (item.scaled && el.isConnected) { // isConnected guard for dynamically-rendered circles
                     el.style.transform = '';
                     el.classList.remove('animate-pulse');
                 }
             });
             activeHighlights = [];
+            seatHighlightState = {};
         }
 
         // --- ZOOM & PAN SYSTEM WITH PERFORMANCE RAF THROTTLING ---
         function updateSeatLabels() {
-            const layer = document.getElementById('seat-labels-layer');
-            if (!layer) return;
+            const circlesLayer = document.getElementById('seat-circles-layer');
+            const labelsLayer = document.getElementById('seat-labels-layer');
+            if (!circlesLayer || !labelsLayer) return;
             const mapWrapper = document.getElementById('map-wrapper');
             const isLearning = mapWrapper && mapWrapper.classList.contains('mode-learning');
-            const zoomedIn = currentViewBox.w < SEAT_LABEL_ZOOM_THRESHOLD;
-            if (!zoomedIn || (gameState === 'playing' && !isLearning)) {
-                layer.innerHTML = '';
+            const showCircles = currentViewBox.w < SEAT_CIRCLE_ZOOM_THRESHOLD;
+            const showLabels = currentViewBox.w < SEAT_LABEL_ZOOM_THRESHOLD && !(gameState === 'playing' && !isLearning);
+            if (!showCircles && !showLabels) {
+                circlesLayer.innerHTML = '';
+                labelsLayer.innerHTML = '';
                 return;
             }
             // The SVG uses preserveAspectRatio="xMidYMid meet": the viewBox fits
@@ -1000,13 +1009,29 @@
             const xMax = rootXMax;
             const yMin = rootYMin - 50;
             const yMax = rootYMax - 50;
-            const parts = [];
+            const circleParts = [];
+            const labelParts = [];
             for (const s of seatLabelData) {
                 if (s.x >= xMin && s.x <= xMax && s.y >= yMin && s.y <= yMax) {
-                    parts.push(`<text x="${s.x}" y="${s.y}" fill="#000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1">${s.n | 0}</text>`);
+                    if (showCircles) {
+                        circleParts.push(`<circle cx="${s.x}" cy="${s.y}" id="${s.id}" fill="${COLORS.seatDefault}" class="seat-circle cursor-pointer hover:fill-white"></circle>`);
+                    }
+                    if (showLabels) {
+                        labelParts.push(`<text x="${s.x}" y="${s.y}" fill="#000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1">${s.n | 0}</text>`);
+                    }
                 }
             }
-            layer.innerHTML = parts.join('');
+            if (showCircles) {
+                circlesLayer.innerHTML = circleParts.join('');
+                // Re-apply any active seat highlights to the newly rendered elements
+                for (const [seatId, color] of Object.entries(seatHighlightState)) {
+                    const el = document.getElementById(seatId);
+                    if (el) el.setAttribute('fill', color);
+                }
+            } else {
+                circlesLayer.innerHTML = '';
+            }
+            labelsLayer.innerHTML = showLabels ? labelParts.join('') : '';
         }
 
         function updateViewBox() {
@@ -1042,7 +1067,15 @@
             document.getElementById('sections-layer').addEventListener('click', (e) => {
                 if (isPanning) return;
                 const target = e.target;
-                if (target && target.id && (target.tagName === 'circle' || target.tagName === 'path')) {
+                if (target && target.id && target.tagName === 'path') {
+                    handleInteraction(target.id);
+                }
+            });
+
+            document.getElementById('seat-circles-layer').addEventListener('click', (e) => {
+                if (isPanning) return;
+                const target = e.target;
+                if (target && target.id && target.tagName === 'circle') {
                     handleInteraction(target.id);
                 }
             });
