@@ -13,6 +13,7 @@
     <style>
         /* CUSTOM FONTS & ANIMATIONS */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        html, body { margin: 0; padding: 0; height: 100%; }
         body { font-family: 'Inter', sans-serif; touch-action: none; }
         
         /* ANIMATION: Ping Once (Ripple effect) */
@@ -31,6 +32,7 @@
 
         /* Performance utilities */
         .will-change-transform { will-change: transform; }
+        #map-wrapper { contain: layout paint; }
         
         /* Massive Performance Boost: Disables hover calculations on 15k elements while panning */
         .is-panning * {
