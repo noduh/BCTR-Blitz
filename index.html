@@ -28,6 +28,14 @@
         /* Map Cursor Styles */
         .cursor-grab { cursor: grab; }
         .cursor-grabbing { cursor: grabbing; }
+
+        /* Performance utilities */
+        .will-change-transform { will-change: transform; }
+        
+        /* Massive Performance Boost: Disables hover calculations on 15k elements while panning */
+        .is-panning * {
+            pointer-events: none !important;
+        }
     </style>
 </head>
 
@@ -93,17 +101,12 @@
                     LEARNING MODE
                 </button>
 
-                 <!-- NEW: EVENT MODE BUTTON -->
+                 <!-- EVENT MODE BUTTON -->
                  <button onclick="startEventMode()" class="w-full py-3 bg-emerald-700 hover:bg-emerald-600 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-white border border-emerald-600 shadow-lg shadow-emerald-900/20">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     EVENT MODE
                 </button>
             </div>
-        </div>
-        
-        <!-- LEARNING MODE CONTAINER -->
-        <div id="learning-mode-container" class="hidden absolute inset-0 pointer-events-none z-30">
-            <!-- Reuse map, this is for overlays -->
         </div>
 
         <!-- EVENT MODE CONTAINER (Seat Search) -->
@@ -119,7 +122,6 @@
                 <div class="space-y-4 text-left">
                     <div>
                         <label class="block text-slate-400 text-xs uppercase font-bold mb-2">Section</label>
-                        <!-- Added text-base to inputs to prevent iOS Safari auto-zoom on focus -->
                         <input type="text" id="search-section" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white text-base focus:outline-none focus:border-indigo-500 uppercase transition-all" placeholder="e.g. A, 07, 101">
                     </div>
                     <div class="flex gap-4">
@@ -173,16 +175,17 @@
         </div>
 
         <!-- MAP CONTAINER -->
-        <div id="map-wrapper" class="w-full h-full flex items-center justify-center p-2 md:p-4 transition-all duration-700 opacity-50 scale-95 relative">
+        <div id="map-wrapper" class="w-full h-full flex items-center justify-center p-2 md:p-4 transition-all duration-700 opacity-50 scale-95 relative will-change-transform">
             <div class="relative w-full h-full max-w-[1200px] border border-slate-800/50 rounded-xl bg-slate-900/30 overflow-hidden">
                 <!-- SVG MAP -->
-                <svg id="auditorium-map" viewBox="-250 -150 1500 2000" class="w-full h-full drop-shadow-2xl cursor-grab active:cursor-grabbing touch-none">
-                    <g transform="translate(0, 50, 0)">
+                <!-- Removed innerHTML updating on the fly, map is injected fully on load -->
+                <svg id="auditorium-map" viewBox="-250 -150 1500 2000" class="w-full h-full drop-shadow-2xl cursor-grab active:cursor-grabbing touch-none will-change-transform">
+                    <g transform="translate(0, 50)">
                         <!-- STATIC STAGE GRAPHIC -->
                         <rect x="300" y="-80" width="200" height="40" fill="#1e293b" rx="4"></rect>
                         <text x="400" y="-55" text-anchor="middle" fill="#64748b" font-size="14" font-weight="bold" letter-spacing="4">STAGE</text>
                         
-                        <!-- LAYERS -->
+                        <!-- DYNAMIC LAYERS -->
                         <g id="floor-labels-layer"></g>
                         <g id="sections-layer"></g>
                     </g>
@@ -240,6 +243,21 @@
             seatRadiusLearning: 4.5,     // Seat size in Learning Mode
             searchHighlightScale: 5      // How many times bigger a searched seat gets
         };
+
+        // Inject Dynamic Styles for CSS-driven updates (SUPER FAST)
+        function injectDynamicStyles() {
+            const style = document.createElement('style');
+            style.innerHTML = `
+                /* Default (Hard Mode) - Hidden labels, normal seats */
+                .learning-label { display: none; }
+                .seat-circle { r: ${DISPLAY.seatRadiusNormal}px; transition: r 0.2s ease, fill 0.2s ease; }
+                
+                /* Learning / Easy Mode - Shown labels, big seats */
+                .mode-learning .learning-label { display: block; }
+                .mode-learning .seat-circle { r: ${DISPLAY.seatRadiusLearning}px; }
+            `;
+            document.head.appendChild(style);
+        }
 
         // --- 1. GAME SETTINGS ---
         const MAX_TIME = 60;       
@@ -386,9 +404,6 @@
             },
         ];
 
-        // --- 3. AMENITIES (ICONS) CONFIGURATION ---
-        const AMENITIES = []; // Empty, as requested
-
         // --- INTERNAL VARIABLES ---
         let gameState = 'start'; 
         let score = 0;
@@ -399,13 +414,17 @@
         let timerInterval = null;
         let lastClickedId = null;
 
+        let activeHighlights = []; // Tracking highlighted elements for O(1) resetting
+
         // --- ZOOM & PAN VARIABLES ---
         const INITIAL_VIEWBOX = { x: -250, y: -150, w: 1500, h: 2000 };
         let currentViewBox = { ...INITIAL_VIEWBOX };
         let isDragging = false;
         let isPanning = false; 
         let dragStart = { x: 0, y: 0 };
-        let lastPinchDistance = null; // Used for tablet pinch-to-zoom
+        let dragScale = { x: 1, y: 1 }; // Cached scaling to prevent layout thrashing
+        let lastPinchDistance = null; 
+        let updateRAF = null; // RequestAnimationFrame throttle
         
         // --- MATH HELPERS ---
         function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
@@ -425,22 +444,16 @@
             return `M ${p4.x} ${p4.y} L ${p1.x} ${p1.y} A ${rOuter} ${rOuter} 0 0 0 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${rInner} ${rInner} 0 0 1 ${p4.x} ${p4.y} Z`;
         }
 
-        // --- HELPER: Get Tier Depth ---
         function getTierMaxRows(config) {
-            if (config.sections) {
-                return Math.max(...config.sections.map(s => s.rows));
-            }
+            if (config.sections) return Math.max(...config.sections.map(s => s.rows));
             return config.rows;
         }
 
-        // --- HELPER: Get End Radius for a Specific Config Index ---
         function getEndRadius(index) {
             const config = VENUE_CONFIG[index];
-            const rows = getTierMaxRows(config);
-            return config.radius + (rows * ROW_HEIGHT);
+            return config.radius + (getTierMaxRows(config) * ROW_HEIGHT);
         }
 
-        // --- HELPER: Get Smart Row Name ---
         function getRowName(startRowStr, rowIndex) {
             let baseRepeat = startRowStr.length; 
             let startCharCode = startRowStr.charCodeAt(0);
@@ -450,9 +463,7 @@
                 currentVal -= 26;
                 baseRepeat++;
             }
-            
-            const letter = String.fromCharCode(65 + currentVal);
-            return letter.repeat(baseRepeat);
+            return String.fromCharCode(65 + currentVal).repeat(baseRepeat);
         }
 
         // --- GAME LOGIC ---
@@ -465,28 +476,16 @@
             const allSections = [];
             
             VENUE_CONFIG.forEach(config => {
-                let tierSections = [];
-                if (config.sections) {
-                    tierSections = config.sections;
-                } else {
-                    tierSections = config.names.map(name => ({
-                        name: name,
-                        rows: config.rows,
-                        seats: config.seats
-                    }));
-                }
+                let tierSections = config.sections || config.names.map(name => ({
+                    name, rows: config.rows, seats: config.seats
+                }));
 
                 tierSections.forEach(section => {
                     const secId = `${config.idPrefix}${section.name}`;
                     allSections.push({ 
                         id: `section-${secId}`, 
                         name: secId, 
-                        config: { 
-                            ...config, 
-                            rows: section.rows, 
-                            seats: section.seats, 
-                            startRow: section.startRow || config.startRow 
-                        } 
+                        config: { ...config, rows: section.rows, seats: section.seats, startRow: section.startRow || config.startRow } 
                     });
                 });
             });
@@ -502,30 +501,17 @@
                 const targetSec = getRandomItem(allSections);
                 const randomRowIndex = Math.floor(Math.random() * targetSec.config.rows);
                 const finalRowLabel = getRowName(targetSec.config.startRow, randomRowIndex);
-
-                return {
-                    id: `row-${targetSec.name}-${finalRowLabel}`,
-                    text: `Sec ${targetSec.name}, Row ${finalRowLabel} (Any Seat)`,
-                    type: 'row'
-                };
+                return { id: `row-${targetSec.name}-${finalRowLabel}`, text: `Sec ${targetSec.name}, Row ${finalRowLabel} (Any Seat)`, type: 'row' };
             }
             
             if (count < 19) {
                 // Easy Seats
                 const targetSec = getRandomItem(allSections);
                 const randomRowIndex = Math.floor(Math.random() * targetSec.config.rows);
-                let seatCount = targetSec.config.seats;
-                if (Array.isArray(seatCount)) {
-                    seatCount = seatCount[randomRowIndex] || seatCount[seatCount.length - 1];
-                }
+                let seatCount = Array.isArray(targetSec.config.seats) ? (targetSec.config.seats[randomRowIndex] || targetSec.config.seats[targetSec.config.seats.length - 1]) : targetSec.config.seats;
                 const randomSeatNum = Math.floor(Math.random() * seatCount) + 1;
                 const finalRowLabel = getRowName(targetSec.config.startRow, randomRowIndex);
-
-                return {
-                    id: `seat-${targetSec.name}-${finalRowLabel}-${randomSeatNum}`,
-                    text: `Sec ${targetSec.name}, Row ${finalRowLabel}, Seat ${randomSeatNum}`,
-                    type: 'seat'
-                };
+                return { id: `seat-${targetSec.name}-${finalRowLabel}-${randomSeatNum}`, text: `Sec ${targetSec.name}, Row ${finalRowLabel}, Seat ${randomSeatNum}`, type: 'seat' };
             }
             
             if (count < 24) {
@@ -539,31 +525,17 @@
                 const targetSec = getRandomItem(allSections);
                 const randomRowIndex = Math.floor(Math.random() * targetSec.config.rows);
                 const finalRowLabel = getRowName(targetSec.config.startRow, randomRowIndex);
-
-                return {
-                    id: `row-${targetSec.name}-${finalRowLabel}`,
-                    text: `Sec ${targetSec.name}, Row ${finalRowLabel} (Any Seat)`,
-                    type: 'row'
-                };
+                return { id: `row-${targetSec.name}-${finalRowLabel}`, text: `Sec ${targetSec.name}, Row ${finalRowLabel} (Any Seat)`, type: 'row' };
             }
 
             // Hard Seats
             const targetSec = getRandomItem(allSections);
             const randomRowIndex = Math.floor(Math.random() * targetSec.config.rows);
-            
-            let seatCount = targetSec.config.seats;
-            if (Array.isArray(seatCount)) {
-                seatCount = seatCount[randomRowIndex] || seatCount[seatCount.length - 1];
-            }
-            
+            let seatCount = Array.isArray(targetSec.config.seats) ? (targetSec.config.seats[randomRowIndex] || targetSec.config.seats[targetSec.config.seats.length - 1]) : targetSec.config.seats;
             const randomSeatNum = Math.floor(Math.random() * seatCount) + 1;
             const finalRowLabel = getRowName(targetSec.config.startRow, randomRowIndex);
 
-            return {
-                id: `seat-${targetSec.name}-${finalRowLabel}-${randomSeatNum}`,
-                text: `Sec ${targetSec.name}, Row ${finalRowLabel}, Seat ${randomSeatNum}`,
-                type: 'seat'
-            };
+            return { id: `seat-${targetSec.name}-${finalRowLabel}-${randomSeatNum}`, text: `Sec ${targetSec.name}, Row ${finalRowLabel}, Seat ${randomSeatNum}`, type: 'seat' };
         }
 
         function startGame() {
@@ -580,22 +552,18 @@
             document.getElementById('game-stats').classList.remove('hidden', 'opacity-0');
             document.getElementById('hud-container').classList.remove('hidden');
             
-            // Hide learning/event headers
             const learningHeader = document.getElementById('learning-header');
             if(learningHeader) learningHeader.classList.add('hidden', 'opacity-0');
 
             const modeHeader = document.getElementById('mode-header');
             if(modeHeader) modeHeader.classList.add('hidden', 'opacity-0');
             
-            // Map
             const mapWrapper = document.getElementById('map-wrapper');
             mapWrapper.classList.remove('opacity-50', 'scale-95', 'hidden');
-            mapWrapper.classList.add('opacity-100', 'scale-100');
+            mapWrapper.classList.add('opacity-100', 'scale-100', 'mode-learning'); // Start Easy Mode
 
             resetMapVisuals();
             resetZoom(); 
-            autoAdjustLayout();
-            drawMap(); 
             currentPrompt = generatePrompt(0);
             updateHUD();
 
@@ -603,49 +571,38 @@
             timerInterval = setInterval(gameLoop, 100); 
         }
 
-        // LEARNING MODE
         function startLearningMode() {
             gameState = 'learning';
             document.getElementById('start-screen').classList.add('hidden', 'opacity-0');
             
-            // Show header
             const lHeader = document.getElementById('learning-header');
             lHeader.classList.remove('hidden');
             setTimeout(() => lHeader.classList.remove('opacity-0'), 10);
 
-            // Show map
             const mapWrapper = document.getElementById('map-wrapper');
             mapWrapper.classList.remove('opacity-50', 'scale-95', 'hidden');
-            mapWrapper.classList.add('opacity-100', 'scale-100');
+            mapWrapper.classList.add('opacity-100', 'scale-100', 'mode-learning');
             
             resetMapVisuals();
             resetZoom();
-            autoAdjustLayout();
-            drawMap(); 
         }
 
-        // EVENT MODE
         function startEventMode() {
             gameState = 'event'; 
             document.getElementById('start-screen').classList.add('hidden', 'opacity-0');
             
-            // Show generic Mode header
             const mHeader = document.getElementById('mode-header');
             document.getElementById('mode-title').innerText = "SEAT SEARCH";
             mHeader.classList.remove('hidden');
             setTimeout(() => mHeader.classList.remove('opacity-0'), 10);
             
-            // Show Event Search Container
             const eContainer = document.getElementById('event-mode-container');
             eContainer.classList.remove('hidden');
             
-            // Hide Map initially (will show after search)
             document.getElementById('map-wrapper').classList.add('hidden');
             
-            // Prepare map in background (layout, draw) so IDs exist for search
             resetMapVisuals();
-            autoAdjustLayout();
-            drawMap();
+            resetZoom();
         }
 
         function handleSeatSearch() {
@@ -662,87 +619,62 @@
                 return;
             }
 
-            // Try exact match first
             let targetId = `seat-${secInput}-${rowInput}-${seatInput}`;
             let el = document.getElementById(targetId);
 
-            // Try adding '0' prefix to section if it's a number (e.g. user typed 7, ID is 07)
             if (!el && !isNaN(secInput)) {
                 targetId = `seat-0${secInput}-${rowInput}-${seatInput}`;
                 el = document.getElementById(targetId);
             }
-            
-            // Try removing '0' prefix if user typed 07 but ID is 7 (unlikely based on config but safe)
             if (!el && secInput.startsWith('0')) {
                 targetId = `seat-${secInput.substring(1)}-${rowInput}-${seatInput}`;
                 el = document.getElementById(targetId);
             }
 
             if (el) {
-                // Found
                 document.getElementById('event-mode-container').classList.add('hidden');
                 const mapWrapper = document.getElementById('map-wrapper');
-                mapWrapper.classList.remove('hidden', 'opacity-50', 'scale-95');
+                mapWrapper.classList.remove('hidden', 'opacity-50', 'scale-95', 'mode-learning'); // No labels in search
                 mapWrapper.classList.add('opacity-100', 'scale-100');
 
                 resetMapVisuals();
-                el.setAttribute('fill', COLORS.searchHighlight);
-                
-                // Make bigger based on setting
-                const currentR = parseFloat(el.getAttribute('r'));
-                el.setAttribute('r', currentR * DISPLAY.searchHighlightScale);
-                
-                // Add pulse for visibility
-                el.classList.add('animate-pulse');
-                
-                // Bring to front
-                el.parentNode.appendChild(el);
+                highlightElement(targetId, COLORS.searchHighlight, true);
             } else {
                 errorBox.textContent = "Invalid Entry. Please Try Again.";
                 errorBox.classList.remove('hidden');
             }
         }
 
-        // RETURN TO START
         function returnToStart() {
             gameState = 'start';
             if (timerInterval) clearInterval(timerInterval);
             
             const learningHeader = document.getElementById('learning-header');
-            if (learningHeader) {
-                learningHeader.classList.add('hidden', 'opacity-0');
-            }
+            if (learningHeader) learningHeader.classList.add('hidden', 'opacity-0');
+            
             const modeHeader = document.getElementById('mode-header');
-            if (modeHeader) {
-                modeHeader.classList.add('hidden', 'opacity-0');
-            }
+            if (modeHeader) modeHeader.classList.add('hidden', 'opacity-0');
+            
             const learningContainer = document.getElementById('learning-mode-container');
-            if (learningContainer) {
-                learningContainer.classList.add('hidden');
-            }
+            if (learningContainer) learningContainer.classList.add('hidden');
+            
             const eventContainer = document.getElementById('event-mode-container');
             if (eventContainer) {
                 eventContainer.classList.add('hidden');
-                // Reset inputs using checks
-                const sSec = document.getElementById('search-section');
-                if(sSec) sSec.value = '';
-                const sRow = document.getElementById('search-row');
-                if(sRow) sRow.value = '';
-                const sSeat = document.getElementById('search-seat');
-                if(sSeat) sSeat.value = '';
-                const sErr = document.getElementById('search-error');
-                if(sErr) sErr.classList.add('hidden');
+                const sSec = document.getElementById('search-section'); if(sSec) sSec.value = '';
+                const sRow = document.getElementById('search-row'); if(sRow) sRow.value = '';
+                const sSeat = document.getElementById('search-seat'); if(sSeat) sSeat.value = '';
+                const sErr = document.getElementById('search-error'); if(sErr) sErr.classList.add('hidden');
             }
 
             document.getElementById('start-screen').classList.remove('hidden', 'opacity-0');
             
             const mapWrapper = document.getElementById('map-wrapper');
-            mapWrapper.classList.remove('hidden', 'opacity-100', 'scale-100');
+            mapWrapper.classList.remove('hidden', 'opacity-100', 'scale-100', 'mode-learning');
             mapWrapper.classList.add('opacity-50', 'scale-95');
             
-            drawMap();
+            resetMapVisuals();
         }
-
 
         function endGame() {
             gameState = 'gameover';
@@ -796,9 +728,9 @@
             if (solvedCount < 5) levelText = 'SECTIONS (EASY)';
             else if (solvedCount < 12) levelText = 'ROWS (EASY)';
             else if (solvedCount < 19) levelText = 'SEATS (EASY)';
-            else if (solvedCount < 24) levelText = 'SECTIONS';
-            else if (solvedCount < 31) levelText = 'ROWS';
-            else levelText = 'SEATS';
+            else if (solvedCount < 24) levelText = 'SECTIONS (HARD)';
+            else if (solvedCount < 31) levelText = 'ROWS (HARD)';
+            else levelText = 'SEATS (HARD)';
 
             document.getElementById('level-display').innerText = levelText;
 
@@ -814,11 +746,7 @@
 
         function handleInteraction(id) {
             if (isPanning) return;
-            
-            // In Learning Mode, don't score, just highlight briefly? Or maybe allow selection?
-            // For now, let's just ignore interaction or maybe console log.
             if (gameState === 'learning' || gameState === 'event') return;
-
             if (gameState !== 'playing' || !currentPrompt || feedback) return;
 
             let isCorrect = false;
@@ -832,9 +760,7 @@
             else if (currentPrompt.type === 'row') {
                  const targetSec = currentPrompt.id.split('-')[1];
                  const targetRow = currentPrompt.id.split('-')[2];
-                 if (clickedParts[0] === 'seat' && 
-                     clickedParts[1] === targetSec && 
-                     clickedParts[2] === targetRow) {
+                 if (clickedParts[0] === 'seat' && clickedParts[1] === targetSec && clickedParts[2] === targetRow) {
                      isCorrect = true;
                  }
             }
@@ -860,11 +786,10 @@
                     updateHUD();
                     
                     if (solvedCount === 19) {
-                        // Transition from Easy to Hard - labels disappear!
-                        drawMap(); 
-                    } else {
-                        resetMapVisuals(); 
+                        // Instant transition to Hard Mode via CSS
+                        document.getElementById('map-wrapper').classList.remove('mode-learning');
                     }
+                    resetMapVisuals(); 
                 }, 500);
 
             } else {
@@ -904,180 +829,82 @@
 
         function adjustSectionDepth(targetIndex, dependencyIndices) {
             let maxPrevEnd = 0;
-            
             dependencyIndices.forEach(idx => {
                 const end = getEndRadius(idx);
                 if (end > maxPrevEnd) maxPrevEnd = end;
             });
 
             const requiredStart = maxPrevEnd + SECTION_GAP;
-            
             if (VENUE_CONFIG[targetIndex].radius < requiredStart) {
                 VENUE_CONFIG[targetIndex].radius = requiredStart;
             }
         }
 
-        function createSVGElement(tag, attrs) {
-            const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-            for (let key in attrs) {
-                if(key === 'textContent') {
-                    el.textContent = attrs[key];
-                } else if (key.startsWith('on')) {
-                    const eventName = key.substring(2).toLowerCase();
-                    el.addEventListener(eventName, attrs[key]);
-                } else {
-                    el.setAttribute(key, attrs[key]);
-                }
-            }
-            return el;
-        }
-
+        // --- BATCH DRAWING LOGIC (SUPER FAST) ---
         function drawMap() {
             const centerX = 400;
             const centerY = 50;
-            const sectionsLayer = document.getElementById('sections-layer');
-            const labelsLayer = document.getElementById('floor-labels-layer');
-            const amenitiesLayer = document.getElementById('amenities-layer');
             
-            if (sectionsLayer) sectionsLayer.innerHTML = '';
-            if (labelsLayer) labelsLayer.innerHTML = '';
-            if (amenitiesLayer) amenitiesLayer.innerHTML = '';
-
-            const showLabels = gameState === 'learning' || (gameState === 'playing' && solvedCount < 19);
+            let sectionsHTML = '';
+            let labelsHTML = '';
 
             VENUE_CONFIG.forEach(config => {
-                let tierSections = [];
-                if (config.sections) {
-                    tierSections = config.sections;
-                } else {
-                    tierSections = config.names.map(name => ({
-                        name: name,
-                        rows: config.rows,
-                        seats: config.seats
-                    }));
-                }
+                let tierSections = config.sections || config.names.map(name => ({
+                    name: name, rows: config.rows, seats: config.seats
+                }));
 
                 const totalAngle = config.angleStart - config.angleEnd;
                 const sectionAngle = totalAngle / tierSections.length;
 
                 tierSections.forEach((section, secIdx) => {
                     const secId = `${config.idPrefix}${section.name}`;
-                    
                     const thisSecStartAngle = config.angleStart - (secIdx * sectionAngle);
                     const thisSecEndAngle = thisSecStartAngle - sectionAngle;
                     const midAngle = (thisSecStartAngle + thisSecEndAngle) / 2;
                     
-                    const gap = (25 / config.radius) * (180 / Math.PI); // Dynamic gap ~25px
+                    const gap = (25 / config.radius) * (180 / Math.PI); 
                     const drawStart = thisSecStartAngle - gap/2;
                     const drawEnd = thisSecEndAngle + gap/2;
-
                     const sectionDepth = section.rows * ROW_HEIGHT;
 
                     const pathData = getSectionPolygon(centerX, centerY, config.radius, config.radius + sectionDepth, drawStart, drawEnd);
-                    const pathEl = createSVGElement('path', {
-                        d: pathData,
-                        fill: 'transparent',
-                        stroke: COLORS.sectionBorder, 
-                        'stroke-width': '1',
-                        id: `section-${secId}`,
-                        class: 'cursor-pointer transition-colors hover:fill-white/10',
-                        onClick: (e) => { e.stopPropagation(); handleInteraction(`section-${secId}`); }
-                    });
-                    if (sectionsLayer) sectionsLayer.appendChild(pathEl);
-
+                    sectionsHTML += `<path d="${pathData}" fill="transparent" stroke="${COLORS.sectionBorder}" stroke-width="1" id="section-${secId}" class="cursor-pointer transition-colors hover:fill-white/10"></path>`;
+                    
                     const labelPos = polarToCartesian(centerX, centerY, config.radius - 20, midAngle);
                     const rotation = midAngle - 90;
-                    const textEl = createSVGElement('text', {
-                        x: labelPos.x,
-                        y: labelPos.y,
-                        fill: COLORS.label,
-                        'font-size': '12',
-                        'font-weight': 'bold',
-                        'text-anchor': 'middle',
-                        transform: `rotate(${rotation}, ${labelPos.x}, ${labelPos.y})`,
-                        class: 'pointer-events-none select-none',
-                        textContent: secId
-                    });
-                    if (sectionsLayer) sectionsLayer.appendChild(textEl);
+                    sectionsHTML += `<text x="${labelPos.x}" y="${labelPos.y}" fill="${COLORS.label}" font-size="12" font-weight="bold" text-anchor="middle" transform="rotate(${rotation}, ${labelPos.x}, ${labelPos.y})" class="pointer-events-none select-none">${secId}</text>`;
 
-                    const rowDepth = ROW_HEIGHT;
                     const isSectionA = secId === 'A';
 
                     for(let r=0; r < section.rows; r++) {
-                        const rowRadius = config.radius + (r * rowDepth) + (rowDepth/2);
-                        
-                        const startRowVal = section.startRow || config.startRow;
-                        const rowLabel = getRowName(startRowVal, r);
+                        const rowRadius = config.radius + (r * ROW_HEIGHT) + (ROW_HEIGHT/2);
+                        const rowLabel = getRowName(section.startRow || config.startRow, r);
 
-                        // ROW LABELS IN LEARNING MODE OR EARLY GAME
-                        if (showLabels) {
-                            const labelOffsetDeg = (10 / rowRadius) * (180 / Math.PI);
-                            const rowLabelPos = polarToCartesian(centerX, centerY, rowRadius, drawEnd - labelOffsetDeg);
-                            
-                            const rowLabelText = createSVGElement('text', {
-                                x: rowLabelPos.x,
-                                y: rowLabelPos.y,
-                                fill: COLORS.label,
-                                'font-size': '8', 
-                                'font-weight': 'bold',
-                                'text-anchor': 'start',
-                                'alignment-baseline': 'middle',
-                                textContent: rowLabel
-                            });
-                             rowLabelText.setAttribute('transform', `rotate(${drawEnd - 93}, ${rowLabelPos.x}, ${rowLabelPos.y})`);
-                             if (sectionsLayer) sectionsLayer.appendChild(rowLabelText);
-                        }
+                        // Row Label (Hidden by default via CSS class)
+                        const labelOffsetDeg = (10 / rowRadius) * (180 / Math.PI);
+                        const rowLabelPos = polarToCartesian(centerX, centerY, rowRadius, drawEnd - labelOffsetDeg);
+                        sectionsHTML += `<text x="${rowLabelPos.x}" y="${rowLabelPos.y}" fill="${COLORS.label}" font-size="8" font-weight="bold" text-anchor="start" alignment-baseline="middle" transform="rotate(${drawEnd - 93}, ${rowLabelPos.x}, ${rowLabelPos.y})" class="learning-label pointer-events-none select-none">${rowLabel}</text>`;
 
-                        let seatsInRow = section.seats;
-                        if (Array.isArray(seatsInRow)) {
-                            seatsInRow = seatsInRow[r] || seatsInRow[seatsInRow.length - 1];
-                        }
+                        let seatsInRow = Array.isArray(section.seats) ? (section.seats[r] || section.seats[section.seats.length - 1]) : section.seats;
 
                         for(let s=0; s < seatsInRow; s++) {
                             const t = (s + 0.5) / seatsInRow; 
                             const seatAngle = drawStart - (t * (drawStart - drawEnd));
                             const pos = polarToCartesian(centerX, centerY, rowRadius, seatAngle);
-                            
-                            let seatNum;
-                            if (isSectionA) {
-                                seatNum = s + 1; 
-                            } else {
-                                seatNum = seatsInRow - s; 
-                            }
-
+                            let seatNum = isSectionA ? s + 1 : seatsInRow - s; 
                             const fullSeatId = `seat-${secId}-${rowLabel}-${seatNum}`;
                             
-                            const seatRadius = showLabels ? DISPLAY.seatRadiusLearning : DISPLAY.seatRadiusNormal;
-
-                            const circleEl = createSVGElement('circle', {
-                                cx: pos.x,
-                                cy: pos.y,
-                                r: seatRadius,
-                                fill: COLORS.seatDefault, 
-                                id: fullSeatId,
-                                class: 'cursor-pointer hover:fill-white transition-all',
-                                onClick: (e) => { e.stopPropagation(); handleInteraction(fullSeatId); }
-                            });
-                            if (sectionsLayer) sectionsLayer.appendChild(circleEl);
-
-                            if (showLabels) {
-                                const seatText = createSVGElement('text', {
-                                    x: pos.x,
-                                    y: pos.y,
-                                    fill: '#000000', 
-                                    'font-size': '3', 
-                                    'text-anchor': 'middle',
-                                    'alignment-baseline': 'central',
-                                    'pointer-events': 'none',
-                                    textContent: seatNum
-                                });
-                                seatText.setAttribute('dy', '1'); 
-                                if (sectionsLayer) sectionsLayer.appendChild(seatText); 
-                            }
+                            // Seat Circle
+                            sectionsHTML += `<circle cx="${pos.x}" cy="${pos.y}" id="${fullSeatId}" fill="${COLORS.seatDefault}" class="seat-circle cursor-pointer hover:fill-white"></circle>`;
+                            
+                            // Seat Number (Hidden by default)
+                            sectionsHTML += `<text x="${pos.x}" y="${pos.y}" fill="#000000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1" class="learning-label">${seatNum}</text>`;
                         }
                     }
                 });
             });
+
+            document.getElementById('sections-layer').innerHTML = sectionsHTML;
 
             const floorLabels = [
                 { text: "MAIN FLOOR", targetConfigIndex: 0, angle: 90, offset: -70 },
@@ -1088,80 +915,58 @@
             floorLabels.forEach(label => {
                 const config = VENUE_CONFIG[label.targetConfigIndex];
                 const labelRadius = config.radius + (label.offset || 0);
-                
                 const pos = polarToCartesian(centerX, centerY, labelRadius, label.angle);
-                
-                const textEl = createSVGElement('text', {
-                    x: pos.x,
-                    y: pos.y,
-                    fill: COLORS.floorLabel, 
-                    'font-size': '14',
-                    'font-weight': 'bold',
-                    'text-anchor': 'middle', 
-                    'alignment-baseline': 'middle',
-                    class: 'pointer-events-none select-none tracking-widest',
-                    textContent: label.text
-                });
-                
-                textEl.setAttribute('transform', `rotate(0, ${pos.x}, ${pos.y})`);
-                
-                if (labelsLayer) labelsLayer.appendChild(textEl);
+                labelsHTML += `<text x="${pos.x}" y="${pos.y}" fill="${COLORS.floorLabel}" font-size="14" font-weight="bold" text-anchor="middle" alignment-baseline="middle" transform="rotate(0, ${pos.x}, ${pos.y})" class="pointer-events-none select-none tracking-widest">${label.text}</text>`;
             });
-            
-            if (amenitiesLayer) {
-                AMENITIES.forEach(am => {
-                    const g = createSVGElement('g', {
-                        transform: `translate(${am.x}, ${am.y})`,
-                        class: 'cursor-pointer hover:opacity-80 amenity-group',
-                        id: am.id,
-                        onClick: (e) => { e.stopPropagation(); handleInteraction(am.id); }
-                    });
-
-                    const circle = createSVGElement('circle', {
-                        r: 20,
-                        fill: '#334155',
-                        class: 'transition-colors'
-                    });
-                    
-                    g.appendChild(circle);
-                    if (amenitiesLayer) amenitiesLayer.appendChild(g);
-                });
-            }
+            document.getElementById('floor-labels-layer').innerHTML = labelsHTML;
         }
 
-        function highlightElement(id, status) {
+        // --- O(1) RESET ENGINE ---
+        function highlightElement(id, statusColor, scaleR = false) {
             const el = document.getElementById(id);
             if (!el) return;
 
-            const color = status === 'correct' ? COLORS.correct : COLORS.wrong; 
-
-            if (el.tagName === 'g') {
-                el.querySelector('circle').setAttribute('fill', color);
-            } else {
+            const color = statusColor === 'correct' ? COLORS.correct : (statusColor === 'wrong' ? COLORS.wrong : statusColor); 
+            
+            if (el.tagName === 'circle') {
                 el.setAttribute('fill', color);
+                if (scaleR) {
+                    el.style.transformOrigin = `${el.getAttribute('cx')}px ${el.getAttribute('cy')}px`;
+                    el.style.transform = `scale(${DISPLAY.searchHighlightScale})`;
+                    el.classList.add('animate-pulse');
+                    el.parentNode.appendChild(el); // Bring to front
+                }
+                activeHighlights.push({ el, type: 'circle', scaled: scaleR });
+            } else if (el.tagName === 'path') {
+                el.setAttribute('fill', color);
+                activeHighlights.push({ el, type: 'path', scaled: false });
             }
         }
 
         function resetMapVisuals() {
-            const paths = document.querySelectorAll('#sections-layer path');
-            paths.forEach(p => {
-                p.setAttribute('fill', 'transparent'); 
-                p.setAttribute('stroke', COLORS.sectionBorder);
+            activeHighlights.forEach(item => {
+                const el = item.el;
+                if (item.type === 'circle') {
+                    el.setAttribute('fill', COLORS.seatDefault);
+                } else if (item.type === 'path') {
+                    el.setAttribute('fill', 'transparent'); 
+                }
+                
+                if (item.scaled) {
+                    el.style.transform = '';
+                    el.classList.remove('animate-pulse');
+                }
             });
-
-            const circles = document.querySelectorAll('#sections-layer circle');
-            const showLabels = gameState === 'learning' || (gameState === 'playing' && solvedCount < 19);
-            const defaultR = showLabels ? DISPLAY.seatRadiusLearning : DISPLAY.seatRadiusNormal; 
-            circles.forEach(c => {
-                c.setAttribute('fill', COLORS.seatDefault);
-                c.setAttribute('r', defaultR); 
-                c.classList.remove('animate-pulse'); 
-            });
+            activeHighlights = [];
         }
 
+        // --- ZOOM & PAN SYSTEM WITH PERFORMANCE RAF THROTTLING ---
         function updateViewBox() {
-            const svg = document.getElementById('auditorium-map');
-            svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
+            if (updateRAF) cancelAnimationFrame(updateRAF);
+            updateRAF = requestAnimationFrame(() => {
+                const svg = document.getElementById('auditorium-map');
+                if(svg) svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
+            });
         }
 
         function resetZoom() {
@@ -1172,21 +977,27 @@
         function zoomMap(factor) {
             const newW = currentViewBox.w * factor;
             const newH = currentViewBox.h * factor;
-            
             const dW = currentViewBox.w - newW;
             const dH = currentViewBox.h - newH;
-
             currentViewBox.x += dW / 2;
             currentViewBox.y += dH / 2;
             currentViewBox.w = newW;
             currentViewBox.h = newH;
-            
             updateViewBox();
         }
 
         function setupZoomPanEvents() {
             const svg = document.getElementById('auditorium-map');
             
+            // Event Delegation for clicking seats! (Super fast)
+            document.getElementById('sections-layer').addEventListener('click', (e) => {
+                if (isPanning) return;
+                const target = e.target;
+                if (target && target.id && (target.tagName === 'circle' || target.tagName === 'path')) {
+                    handleInteraction(target.id);
+                }
+            });
+
             svg.addEventListener('mousedown', startDrag);
             svg.addEventListener('mousemove', drag);
             svg.addEventListener('mouseup', endDrag);
@@ -1194,10 +1005,7 @@
             
             svg.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 2) {
-                    lastPinchDistance = Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY
-                    );
+                    lastPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
                 } else if (e.touches.length === 1) {
                     startDrag(e.touches[0]);
                 }
@@ -1207,87 +1015,84 @@
                 if (e.touches.length === 2) {
                     e.preventDefault();
                     if (lastPinchDistance !== null) {
-                        const currentDistance = Math.hypot(
-                            e.touches[0].clientX - e.touches[1].clientX,
-                            e.touches[0].clientY - e.touches[1].clientY
-                        );
+                        const currentDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
                         const factor = lastPinchDistance / currentDistance;
                         const smoothedFactor = 1 + (factor - 1) * 0.75;
                         zoomMap(smoothedFactor);
                         lastPinchDistance = currentDistance;
                     }
                 } else if (e.touches.length === 1) {
+                    // Prevent default scrolling only when dragging the map
+                    e.preventDefault(); 
                     drag(e.touches[0]);
                 }
             }, { passive: false });
 
-            svg.addEventListener('touchend', (e) => {
-                lastPinchDistance = null;
-                endDrag();
-            });
-
-            svg.addEventListener('touchcancel', (e) => {
-                lastPinchDistance = null;
-                endDrag();
-            });
-
-            svg.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                const factor = e.deltaY > 0 ? 1.1 : 0.9;
-                zoomMap(factor);
-            }, { passive: false });
+            svg.addEventListener('touchend', () => { lastPinchDistance = null; endDrag(); });
+            svg.addEventListener('touchcancel', () => { lastPinchDistance = null; endDrag(); });
+            svg.addEventListener('wheel', (e) => { e.preventDefault(); zoomMap(e.deltaY > 0 ? 1.1 : 0.9); }, { passive: false });
         }
 
         function startDrag(e) {
             isDragging = true;
             isPanning = false; 
             dragStart = { x: e.clientX, y: e.clientY };
+            
+            // Cache scaling calculation to prevent layout thrashing
+            const svg = document.getElementById('auditorium-map');
+            const rect = svg.getBoundingClientRect();
+            dragScale = {
+                x: currentViewBox.w / rect.width,
+                y: currentViewBox.h / rect.height
+            };
         }
 
         function drag(e) {
             if (!isDragging) return;
-            
             const dx = e.clientX - dragStart.x;
             const dy = e.clientY - dragStart.y;
 
-            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+            if (!isPanning && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
                 isPanning = true;
-                document.getElementById('auditorium-map').style.cursor = 'grabbing';
+                const svg = document.getElementById('auditorium-map');
+                svg.style.cursor = 'grabbing';
+                svg.classList.add('is-panning'); // Disables mouseover hovers for massive performance gain!
             }
 
-            const svg = document.getElementById('auditorium-map');
-            const rect = svg.getBoundingClientRect();
-            
-            const scaleX = currentViewBox.w / rect.width; 
-            const scaleY = currentViewBox.h / rect.height; 
-            
-            currentViewBox.x -= dx * scaleX;
-            currentViewBox.y -= dy * scaleY;
+            if (isPanning) {
+                currentViewBox.x -= dx * dragScale.x;
+                currentViewBox.y -= dy * dragScale.y;
 
-            updateViewBox();
-
-            dragStart = { x: e.clientX, y: e.clientY };
+                updateViewBox();
+                dragStart = { x: e.clientX, y: e.clientY };
+            }
         }
 
         function endDrag() {
+            if (!isDragging) return;
             isDragging = false;
-            document.getElementById('auditorium-map').style.cursor = 'grab';
+            
+            const svg = document.getElementById('auditorium-map');
+            svg.style.cursor = 'grab';
+            svg.classList.remove('is-panning'); // Re-enable hovers
+            
+            // Delay resetting panning slightly to prevent accidental clicks
+            setTimeout(() => { isPanning = false; }, 50);
         }
 
         function applyColors() {
             document.body.style.backgroundColor = COLORS.appBackground;
-            
             const headers = document.querySelectorAll('#app-header, #app-footer');
             headers.forEach(el => el.style.backgroundColor = COLORS.appBackground);
-            
             const main = document.getElementById('app-main');
             if(main) main.style.backgroundColor = COLORS.mapBackground;
         }
 
         window.onload = function() {
+            injectDynamicStyles();
             applyColors();
             autoAdjustLayout(); 
-            drawMap();
+            drawMap(); // Build DOM once!
             setupZoomPanEvents();
         };
 
