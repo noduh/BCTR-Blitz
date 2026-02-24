@@ -972,15 +972,21 @@
         function updateSeatLabels() {
             const layer = document.getElementById('seat-labels-layer');
             if (!layer) return;
+            const mapWrapper = document.getElementById('map-wrapper');
+            const isLearning = mapWrapper && mapWrapper.classList.contains('mode-learning');
             const zoomedIn = currentViewBox.w < SEAT_LABEL_ZOOM_THRESHOLD;
-            if (!zoomedIn) {
+            if (!zoomedIn || (gameState === 'playing' && !isLearning)) {
                 layer.innerHTML = '';
                 return;
             }
+            // seatLabelData uses group-local coords; the render group has translate(0, 50),
+            // so root SVG y = s.y + 50. Adjust viewBox y bounds by -50 to compare correctly.
             const { x, y, w, h } = currentViewBox;
+            const yMin = y - 50;
+            const yMax = y + h - 50;
             const parts = [];
             for (const s of seatLabelData) {
-                if (s.x >= x && s.x <= x + w && s.y >= y && s.y <= y + h) {
+                if (s.x >= x && s.x <= x + w && s.y >= yMin && s.y <= yMax) {
                     parts.push(`<text x="${s.x}" y="${s.y}" fill="#000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1">${s.n | 0}</text>`);
                 }
             }
@@ -992,7 +998,7 @@
             updateRAF = requestAnimationFrame(() => {
                 const svg = document.getElementById('auditorium-map');
                 if(svg) svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
-                if (!isPanning) updateSeatLabels();
+                if (!isPanning) updateSeatLabels(); // Skip DOM write during panning for performance; endDrag() updates labels after pan stops
             });
         }
 
