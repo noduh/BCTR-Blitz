@@ -979,14 +979,30 @@
                 layer.innerHTML = '';
                 return;
             }
-            // seatLabelData uses group-local coords; the render group has translate(0, 50),
-            // so root SVG y = s.y + 50. Adjust viewBox y bounds by -50 to compare correctly.
-            const { x, y, w, h } = currentViewBox;
-            const yMin = y - 50;
-            const yMax = y + h - 50;
+            // The SVG uses preserveAspectRatio="xMidYMid meet": the viewBox fits
+            // inside the SVG element centered, with possible letterboxing on screen.
+            // The SVG clips to its CSS element box (not the viewBox), so the
+            // letterbox areas outside the viewBox mapping are also visible on screen
+            // and must receive labels. Compute the actual visible SVG coordinate range.
+            const svg = document.getElementById('auditorium-map');
+            const rect = svg.getBoundingClientRect();
+            const { x: vbX, y: vbY, w: vbW, h: vbH } = currentViewBox;
+            const meetScale = Math.min(rect.width / vbW, rect.height / vbH);
+            const visW = rect.width / meetScale;
+            const visH = rect.height / meetScale;
+            const rootXMin = vbX - (visW - vbW) / 2;
+            const rootXMax = rootXMin + visW;
+            const rootYMin = vbY - (visH - vbH) / 2;
+            const rootYMax = rootYMin + visH;
+            // seatLabelData uses group-local coords; <g transform="translate(0,50)">
+            // means root SVG y = group y + 50, so subtract 50 from root Y bounds.
+            const xMin = rootXMin;
+            const xMax = rootXMax;
+            const yMin = rootYMin - 50;
+            const yMax = rootYMax - 50;
             const parts = [];
             for (const s of seatLabelData) {
-                if (s.x >= x && s.x <= x + w && s.y >= yMin && s.y <= yMax) {
+                if (s.x >= xMin && s.x <= xMax && s.y >= yMin && s.y <= yMax) {
                     parts.push(`<text x="${s.x}" y="${s.y}" fill="#000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1">${s.n | 0}</text>`);
                 }
             }
@@ -1071,13 +1087,12 @@
             isPanning = false; 
             dragStart = { x: e.clientX, y: e.clientY };
             
-            // Cache scaling calculation to prevent layout thrashing
+            // Compute the uniform scale used by preserveAspectRatio="xMidYMid meet"
+            // so that dragging feels equally accurate in both axes on any screen shape.
             const svg = document.getElementById('auditorium-map');
             const rect = svg.getBoundingClientRect();
-            dragScale = {
-                x: currentViewBox.w / rect.width,
-                y: currentViewBox.h / rect.height
-            };
+            const meetScale = Math.min(rect.width / currentViewBox.w, rect.height / currentViewBox.h);
+            dragScale = { x: 1 / meetScale, y: 1 / meetScale };
         }
 
         function drag(e) {
