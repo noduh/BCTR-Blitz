@@ -1008,7 +1008,6 @@
             // The SVG clips to its CSS element box (not the viewBox), so the
             // letterbox areas outside the viewBox mapping are also visible on screen
             // and must receive labels. Compute the actual visible SVG coordinate range.
-            const svg = document.getElementById('auditorium-map');
             const rect = svg.getBoundingClientRect();
             const { x: vbX, y: vbY, w: vbW, h: vbH } = currentViewBox;
             const meetScale = Math.min(rect.width / vbW, rect.height / vbH);
