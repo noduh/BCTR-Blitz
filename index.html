@@ -177,8 +177,8 @@
         </div>
 
         <!-- MAP CONTAINER -->
-        <div id="map-wrapper" class="w-full h-full flex items-center justify-center p-2 md:p-4 transition-all duration-700 opacity-50 scale-95 relative will-change-transform">
-            <div class="relative w-full h-full max-w-[1200px] border border-slate-800/50 rounded-xl bg-slate-900/30 overflow-hidden">
+        <div id="map-wrapper" class="w-full h-full flex items-center justify-center transition-all duration-700 opacity-50 scale-95 relative will-change-transform">
+            <div class="relative w-full h-full overflow-hidden">
                 <!-- SVG MAP -->
                 <!-- Removed innerHTML updating on the fly, map is injected fully on load -->
                 <svg id="auditorium-map" viewBox="-250 -150 1500 2000" class="w-full h-full drop-shadow-2xl cursor-grab active:cursor-grabbing touch-none will-change-transform">
@@ -898,9 +898,6 @@
                             
                             // Seat Circle
                             sectionsHTML += `<circle cx="${pos.x}" cy="${pos.y}" id="${fullSeatId}" fill="${COLORS.seatDefault}" class="seat-circle cursor-pointer hover:fill-white"></circle>`;
-                            
-                            // Seat Number (Hidden by default)
-                            sectionsHTML += `<text x="${pos.x}" y="${pos.y}" fill="#000000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1" class="learning-label">${seatNum}</text>`;
                         }
                     }
                 });
