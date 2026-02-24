@@ -9,6 +9,20 @@
       STYLE LIBRARY (Tailwind CSS)
     -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Safelist: pre-compile all classes applied dynamically during gameplay so
+         the CDN compiler does not fetch WASM/resources mid-game, which was
+         causing the ethernet spike and the associated lag. -->
+    <script>
+        tailwind.config = {
+            safelist: [
+                'bg-green-500/90', 'border-green-400',
+                'bg-red-500/90', 'border-red-400',
+                'bg-red-500', 'text-red-400',
+                'hover:fill-white',
+                'min-w-[320px]',
+            ]
+        }
+    </script>
     
     <style>
         /* CUSTOM FONTS & ANIMATIONS */
