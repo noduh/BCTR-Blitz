@@ -975,8 +975,7 @@
             const mapWrapper = document.getElementById('map-wrapper');
             const isLearning = mapWrapper && mapWrapper.classList.contains('mode-learning');
             const zoomedIn = currentViewBox.w < SEAT_LABEL_ZOOM_THRESHOLD;
-            const showFromZoom = zoomedIn && gameState !== 'playing';
-            if (!isLearning && !showFromZoom) {
+            if (!zoomedIn || (gameState === 'playing' && !isLearning)) {
                 layer.innerHTML = '';
                 return;
             }
