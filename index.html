@@ -270,6 +270,8 @@
             document.head.appendChild(style);
         }
 
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+
         // --- 1. GAME SETTINGS ---
         const MAX_TIME = 60;       
         const TIME_BONUS = 6;      
@@ -1001,8 +1003,8 @@
                 }
             }
             if (!showCircles && !showLabels) {
-                circlesLayer.innerHTML = '';
-                labelsLayer.innerHTML = '';
+                circlesLayer.replaceChildren();
+                labelsLayer.replaceChildren();
                 return;
             }
             // The SVG uses preserveAspectRatio="xMidYMid meet": the viewBox fits
@@ -1025,21 +1027,38 @@
             const xMax = rootXMax;
             const yMin = rootYMin - 50;
             const yMax = rootYMax - 50;
-            const circleParts = [];
-            const labelParts = [];
+            // Build DOM nodes directly — no string serialization/parsing overhead, still one reflow
+            const circFrag = document.createDocumentFragment();
+            const lblFrag = document.createDocumentFragment();
             for (const s of seatLabelData) {
                 if (s.x >= xMin && s.x <= xMax && s.y >= yMin && s.y <= yMax) {
                     if (showCircles) {
-                        circleParts.push(`<circle cx="${s.x}" cy="${s.y}" id="${s.id}" fill="${COLORS.seatDefault}" class="seat-circle cursor-pointer hover:fill-white"></circle>`);
+                        const c = document.createElementNS(SVG_NS, 'circle');
+                        c.setAttribute('cx', s.x);
+                        c.setAttribute('cy', s.y);
+                        c.setAttribute('id', s.id);
+                        c.setAttribute('fill', COLORS.seatDefault);
+                        c.setAttribute('class', 'seat-circle cursor-pointer hover:fill-white');
+                        circFrag.appendChild(c);
                     }
                     if (showLabels) {
-                        labelParts.push(`<text x="${s.x}" y="${s.y}" fill="#000" font-size="3" text-anchor="middle" alignment-baseline="central" pointer-events="none" dy="1">${s.n | 0}</text>`);
+                        const t = document.createElementNS(SVG_NS, 'text');
+                        t.setAttribute('x', s.x);
+                        t.setAttribute('y', s.y);
+                        t.setAttribute('fill', '#000');
+                        t.setAttribute('font-size', '3');
+                        t.setAttribute('text-anchor', 'middle');
+                        t.setAttribute('alignment-baseline', 'central');
+                        t.setAttribute('pointer-events', 'none');
+                        t.setAttribute('dy', '1');
+                        t.textContent = s.n | 0;
+                        lblFrag.appendChild(t);
                     }
                 }
             }
-            // Batch both DOM writes together before any reads to avoid layout thrashing
-            circlesLayer.innerHTML = showCircles ? circleParts.join('') : '';
-            labelsLayer.innerHTML = showLabels ? labelParts.join('') : '';
+            // Commit both fragments together before any reads to avoid layout thrashing
+            if (showCircles) { circlesLayer.replaceChildren(circFrag); } else { circlesLayer.replaceChildren(); }
+            if (showLabels) { labelsLayer.replaceChildren(lblFrag); } else { labelsLayer.replaceChildren(); }
             // Re-apply any active seat highlights to the newly rendered elements
             if (showCircles) {
                 for (const [seatId, color] of Object.entries(seatHighlightState)) {
