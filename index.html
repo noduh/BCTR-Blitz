@@ -50,8 +50,8 @@
         /* Force the SVG onto its own GPU compositor layer for hardware-accelerated rendering */
         #auditorium-map { transform: translateZ(0); }
         
-        /* Massive Performance Boost: Disables hover calculations on 15k elements while panning */
-        .is-panning * {
+        /* Massive Performance Boost: Disables hover calculations on 15k elements while panning or zooming */
+        .is-panning *, .is-zooming * {
             pointer-events: none !important;
         }
 
@@ -455,6 +455,7 @@
         let updateRAF = null; // RequestAnimationFrame throttle
         let wheelRAF = null; // RAF throttle for wheel events
         let pendingWheelFactor = 1; // Accumulated zoom factor for wheel event coalescing
+        let zoomEndTimer = null; // Debounce timer for removing is-zooming class
         let seatLabelTimer = null; // Debounce timer for seat label updates
         let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
         const SEAT_LABEL_ZOOM_THRESHOLD = 800; // Show seat numbers when viewBox width is below this
@@ -1141,6 +1142,7 @@
             svg.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 2) {
                     lastPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                    svg.classList.add('is-zooming');
                 } else if (e.touches.length === 1) {
                     startDrag(e.touches[0]);
                 }
@@ -1163,10 +1165,13 @@
                 }
             }, { passive: false });
 
-            svg.addEventListener('touchend', () => { lastPinchDistance = null; endDrag(); });
-            svg.addEventListener('touchcancel', () => { lastPinchDistance = null; endDrag(); });
+            svg.addEventListener('touchend', () => { lastPinchDistance = null; svg.classList.remove('is-zooming'); endDrag(); });
+            svg.addEventListener('touchcancel', () => { lastPinchDistance = null; svg.classList.remove('is-zooming'); endDrag(); });
             svg.addEventListener('wheel', (e) => {
                 e.preventDefault();
+                svg.classList.add('is-zooming');
+                if (zoomEndTimer) clearTimeout(zoomEndTimer);
+                zoomEndTimer = setTimeout(() => svg.classList.remove('is-zooming'), 150);
                 pendingWheelFactor *= (e.deltaY > 0 ? 1.1 : 0.9);
                 if (!wheelRAF) {
                     wheelRAF = requestAnimationFrame(() => {
