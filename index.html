@@ -40,6 +40,11 @@
         .is-panning * {
             pointer-events: none !important;
         }
+
+        /* When zoomed out (no seats visible), show sections as solid white blocks */
+        .sections-blocks #sections-layer path {
+            fill: rgba(255, 255, 255, 0.18);
+        }
     </style>
 </head>
 
@@ -432,8 +437,9 @@
         let dragScale = { x: 1, y: 1 }; // Cached scaling to prevent layout thrashing
         let lastPinchDistance = null; 
         let updateRAF = null; // RequestAnimationFrame throttle
+        let seatLabelTimer = null; // Debounce timer for seat label updates
         let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
-        const SEAT_LABEL_ZOOM_THRESHOLD = 600; // Show seat numbers when viewBox width is below this
+        const SEAT_LABEL_ZOOM_THRESHOLD = 800; // Show seat numbers when viewBox width is below this
         const SEAT_CIRCLE_ZOOM_THRESHOLD = 1000; // Show seat circles when viewBox width is below this
         
         // --- MATH HELPERS ---
@@ -980,9 +986,18 @@
             const labelsLayer = document.getElementById('seat-labels-layer');
             if (!circlesLayer || !labelsLayer) return;
             const mapWrapper = document.getElementById('map-wrapper');
+            const svg = document.getElementById('auditorium-map');
             const isLearning = mapWrapper && mapWrapper.classList.contains('mode-learning');
             const showCircles = currentViewBox.w < SEAT_CIRCLE_ZOOM_THRESHOLD;
             const showLabels = currentViewBox.w < SEAT_LABEL_ZOOM_THRESHOLD && !(gameState === 'playing' && !isLearning);
+            // Toggle white section blocks: visible when no seats are rendering
+            if (svg) {
+                if (!showCircles) {
+                    svg.classList.add('sections-blocks');
+                } else {
+                    svg.classList.remove('sections-blocks');
+                }
+            }
             if (!showCircles && !showLabels) {
                 circlesLayer.innerHTML = '';
                 labelsLayer.innerHTML = '';
@@ -1034,12 +1049,17 @@
             labelsLayer.innerHTML = showLabels ? labelParts.join('') : '';
         }
 
+        function scheduleSeatLabels() {
+            if (seatLabelTimer) clearTimeout(seatLabelTimer);
+            seatLabelTimer = setTimeout(updateSeatLabels, 80);
+        }
+
         function updateViewBox() {
             if (updateRAF) cancelAnimationFrame(updateRAF);
             updateRAF = requestAnimationFrame(() => {
                 const svg = document.getElementById('auditorium-map');
                 if(svg) svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
-                if (!isPanning) updateSeatLabels(); // Skip DOM write during panning for performance; endDrag() updates labels after pan stops
+                if (!isPanning) scheduleSeatLabels(); // Debounced DOM write: skip while panning, batch rapid zoom events
             });
         }
 
@@ -1175,6 +1195,7 @@
             autoAdjustLayout(); 
             drawMap(); // Build DOM once!
             setupZoomPanEvents();
+            updateSeatLabels(); // Apply initial section block state
         };
 
     </script>
