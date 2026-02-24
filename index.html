@@ -1037,17 +1037,16 @@
                     }
                 }
             }
+            // Batch both DOM writes together before any reads to avoid layout thrashing
+            circlesLayer.innerHTML = showCircles ? circleParts.join('') : '';
+            labelsLayer.innerHTML = showLabels ? labelParts.join('') : '';
+            // Re-apply any active seat highlights to the newly rendered elements
             if (showCircles) {
-                circlesLayer.innerHTML = circleParts.join('');
-                // Re-apply any active seat highlights to the newly rendered elements
                 for (const [seatId, color] of Object.entries(seatHighlightState)) {
                     const el = document.getElementById(seatId);
                     if (el) el.setAttribute('fill', color);
                 }
-            } else {
-                circlesLayer.innerHTML = '';
             }
-            labelsLayer.innerHTML = showLabels ? labelParts.join('') : '';
         }
 
         function scheduleSeatLabels() {
