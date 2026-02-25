@@ -458,6 +458,7 @@
         let zoomEndTimer = null; // Debounce timer for removing is-zooming class
         let seatLabelTimer = null; // Debounce timer for seat label updates
         let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
+        let lastSeatRenderState = null; // {showCircles, showLabels, x, y, w} — skip redundant rebuilds
         const SEAT_LABEL_ZOOM_THRESHOLD = 800; // Show seat numbers when viewBox width is below this
         const SEAT_CIRCLE_ZOOM_THRESHOLD = 1000; // Show seat circles when viewBox width is below this
         
@@ -1009,6 +1010,20 @@
             const isLearning = mapWrapper && mapWrapper.classList.contains('mode-learning');
             const showCircles = currentViewBox.w < SEAT_CIRCLE_ZOOM_THRESHOLD;
             const showLabels = currentViewBox.w < SEAT_LABEL_ZOOM_THRESHOLD && !(gameState === 'playing' && !isLearning);
+            // Skip the expensive O(15k) DOM rebuild when nothing visible has changed.
+            // A tolerance of 1% of the current view width avoids rebuilding on sub-pixel
+            // floating-point jitter while still catching real pan/zoom movements.
+            if (lastSeatRenderState &&
+                lastSeatRenderState.showCircles === showCircles &&
+                lastSeatRenderState.showLabels === showLabels) {
+                const tol = currentViewBox.w * 0.01;
+                if (Math.abs(currentViewBox.w - lastSeatRenderState.w) <= tol &&
+                    Math.abs(currentViewBox.x - lastSeatRenderState.x) <= tol &&
+                    Math.abs(currentViewBox.y - lastSeatRenderState.y) <= tol) {
+                    return;
+                }
+            }
+            lastSeatRenderState = { showCircles, showLabels, x: currentViewBox.x, y: currentViewBox.y, w: currentViewBox.w };
             // Toggle white section blocks: visible when no seats are rendering
             if (svg) {
                 if (!showCircles) {
