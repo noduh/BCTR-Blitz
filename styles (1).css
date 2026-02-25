@@ -1,5 +1,7 @@
-body{
-  padding: 25px;
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
 }
 .title {
 	color: #5C6AC4;

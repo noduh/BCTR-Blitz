@@ -1,7 +1,5 @@
 function showTime() {
-	document.getElementById('currentTime').innerHTML = new Date().toUTCString();
+	document.getElementById('currentTime').textContent = new Date().toUTCString();
 }
 showTime();
-setInterval(function () {
-	showTime();
-}, 1000);
+const timeInterval = setInterval(showTime, 1000);
