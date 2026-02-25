@@ -458,6 +458,7 @@
         let pendingWheelFactor = 1; // Accumulated zoom factor for wheel event coalescing
         let zoomEndTimer = null; // Debounce timer for removing is-zooming class
         let seatLabelTimer = null; // Debounce timer for seat label updates
+        let panEndTimer = null; // Debounce timer for resetting isPanning after drag ends
         let seatLabelData = []; // Lightweight seat position data for dynamic label rendering
         let lastSeatRenderState = null; // {showCircles, showLabels, x, y, w} — skip redundant rebuilds
         const SEAT_LABEL_ZOOM_THRESHOLD = 800; // Show seat numbers when viewBox width is below this
@@ -1245,7 +1246,8 @@
             svg.classList.remove('is-panning'); // Re-enable hovers
             
             // Delay resetting panning slightly to prevent accidental clicks, then refresh labels
-            setTimeout(() => { isPanning = false; updateSeatLabels(); }, 50);
+            if (panEndTimer) clearTimeout(panEndTimer);
+            panEndTimer = setTimeout(() => { isPanning = false; updateSeatLabels(); }, 50);
         }
 
         function applyColors() {
