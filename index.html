@@ -452,6 +452,7 @@
         let dragStart = { x: 0, y: 0 };
         let dragScale = { x: 1, y: 1 }; // Cached scaling to prevent layout thrashing
         let lastPinchDistance = null; 
+        let isZooming = false; // True while a pinch or wheel zoom gesture is active
         let updateRAF = null; // RequestAnimationFrame throttle
         let wheelRAF = null; // RAF throttle for wheel events
         let pendingWheelFactor = 1; // Accumulated zoom factor for wheel event coalescing
@@ -1108,7 +1109,7 @@
             updateRAF = requestAnimationFrame(() => {
                 const svg = document.getElementById('auditorium-map');
                 if(svg) svg.setAttribute('viewBox', `${currentViewBox.x} ${currentViewBox.y} ${currentViewBox.w} ${currentViewBox.h}`);
-                if (!isPanning) scheduleSeatLabels(); // Debounced DOM write: skip while panning, batch rapid zoom events
+                if (!isPanning && !isZooming) scheduleSeatLabels(); // Debounced DOM write: skip while panning or zooming, batch rapid events
             });
         }
 
@@ -1157,6 +1158,7 @@
             svg.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 2) {
                     lastPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                    isZooming = true;
                     svg.classList.add('is-zooming');
                 } else if (e.touches.length === 1) {
                     startDrag(e.touches[0]);
@@ -1180,13 +1182,14 @@
                 }
             }, { passive: false });
 
-            svg.addEventListener('touchend', () => { lastPinchDistance = null; svg.classList.remove('is-zooming'); endDrag(); });
-            svg.addEventListener('touchcancel', () => { lastPinchDistance = null; svg.classList.remove('is-zooming'); endDrag(); });
+            svg.addEventListener('touchend', () => { lastPinchDistance = null; isZooming = false; svg.classList.remove('is-zooming'); scheduleSeatLabels(); endDrag(); });
+            svg.addEventListener('touchcancel', () => { lastPinchDistance = null; isZooming = false; svg.classList.remove('is-zooming'); scheduleSeatLabels(); endDrag(); });
             svg.addEventListener('wheel', (e) => {
                 e.preventDefault();
                 svg.classList.add('is-zooming');
+                isZooming = true;
                 if (zoomEndTimer) clearTimeout(zoomEndTimer);
-                zoomEndTimer = setTimeout(() => svg.classList.remove('is-zooming'), 150);
+                zoomEndTimer = setTimeout(() => { isZooming = false; svg.classList.remove('is-zooming'); scheduleSeatLabels(); }, 150);
                 const normalizedDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 300 : e.deltaY;
                 pendingWheelFactor *= Math.pow(1.001, normalizedDelta);
                 if (!wheelRAF) {
