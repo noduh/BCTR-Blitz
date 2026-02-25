@@ -47,8 +47,6 @@
         /* Performance utilities */
         .will-change-transform { will-change: transform; }
         #map-wrapper { contain: layout paint; }
-        /* Force the SVG onto its own GPU compositor layer for hardware-accelerated rendering */
-        #auditorium-map { transform: translateZ(0); }
         
         /* Massive Performance Boost: Disables hover calculations on 15k elements while panning or zooming */
         .is-panning *, .is-zooming * {
@@ -202,7 +200,7 @@
             <div class="relative w-full h-full overflow-hidden">
                 <!-- SVG MAP -->
                 <!-- Removed innerHTML updating on the fly, map is injected fully on load -->
-                <svg id="auditorium-map" viewBox="-250 -150 1500 2000" class="w-full h-full drop-shadow-2xl cursor-grab active:cursor-grabbing touch-none will-change-transform">
+                <svg id="auditorium-map" viewBox="-250 -150 1500 2000" class="w-full h-full cursor-grab active:cursor-grabbing touch-none will-change-transform">
                     <g transform="translate(0, 50)">
                         <!-- STATIC STAGE GRAPHIC -->
                         <rect x="300" y="-80" width="200" height="40" fill="#1e293b" rx="4"></rect>
@@ -275,7 +273,7 @@
             style.innerHTML = `
                 /* Default (Hard Mode) - Hidden labels, normal seats */
                 .learning-label { display: none; }
-                .seat-circle { r: ${DISPLAY.seatRadiusNormal}px; transition: fill 0.2s ease; }
+                .seat-circle { r: ${DISPLAY.seatRadiusNormal}px; }
                 
                 /* Learning / Easy Mode - Shown labels, big seats */
                 .mode-learning .learning-label { display: block; }
